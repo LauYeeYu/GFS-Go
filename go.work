@@ -1,0 +1,8 @@
+go 1.20
+
+use (
+	./chunkserver
+	./client
+	./lib
+	./master
+)
