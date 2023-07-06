@@ -136,3 +136,5 @@ in the document for master.
 - chunk size (64MiB recommended)
 - number of replicas
 - garbage collection interval
+- *HeartBeat* interval
+- lease duration
