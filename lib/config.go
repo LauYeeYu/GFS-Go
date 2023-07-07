@@ -10,8 +10,8 @@ const (
 
 // Constant for time
 const (
-	GarbageCollectionInterval = 60 * time.Second        // 60s
-	HeartbeatInterval         = 200 * time.Millisecond  // 200ms
-	HeartbeatTimeout          = 1000 * time.Millisecond // 1s
-	LeaseTimeout              = 5 * time.Second         // 5s
+	PeriodicWorkInterval = 60 * time.Second        // 60s
+	HeartbeatInterval    = 200 * time.Millisecond  // 200ms
+	HeartbeatTimeout     = 1000 * time.Millisecond // 1s
+	LeaseTimeout         = 5 * time.Second         // 5s
 )
