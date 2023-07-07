@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-type Namespace struct {
+type NamespaceMetadata struct {
 	Files       map[gfs.PathInfo]FileMetadata
 	FilesLock   sync.RWMutex
 	Directories map[string]gfs.PathInfo
@@ -20,6 +20,7 @@ type Namespace struct {
 
 type FileMetadata struct {
 	Chunks []gfs.ChunkHandle
+	Lock   sync.RWMutex
 }
 
 type ChunkMetadata struct {
@@ -34,7 +35,7 @@ type ChunkMetadata struct {
 	Servers map[gfs.ServerInfo]bool // initialized with HeartBeat
 }
 
-func (namespace *Namespace) lockFileOrDirectory(pathname string, readOnly bool) {
+func (namespace *NamespaceMetadata) lockFileOrDirectory(pathname string, readOnly bool) {
 	namespace.LocksLock.RLock()
 	defer namespace.LocksLock.RUnlock()
 	if lock, ok := namespace.Locks[pathname]; ok {
@@ -50,7 +51,7 @@ func (namespace *Namespace) lockFileOrDirectory(pathname string, readOnly bool) 
 // Return true if all ancestors are locked successfully
 // Return false if any ancestor is locked by others
 // The operation is done hierarchically from the root to the leaf
-func (namespace *Namespace) LockAncestors(pathInfo *gfs.PathInfo) bool {
+func (namespace *NamespaceMetadata) LockAncestors(pathInfo *gfs.PathInfo) bool {
 	namespace.LocksLock.RLock()
 	defer namespace.LocksLock.RUnlock()
 	parent, err := pathInfo.Parent()

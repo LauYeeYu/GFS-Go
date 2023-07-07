@@ -1,6 +1,9 @@
 package gfs
 
-import "strings"
+import (
+	"errors"
+	"strings"
+)
 
 type Namespace string
 
@@ -32,10 +35,10 @@ type PathInfo struct {
 	IsDir    bool
 }
 
-func (pathInfo *PathInfo) Parent() (*PathInfo, *Error) {
+func (pathInfo *PathInfo) Parent() (*PathInfo, error) {
 	i := strings.LastIndexByte(pathInfo.Pathname, '/')
 	if i == -1 {
-		return nil, &Error{Code: -1, Message: "No parent"}
+		return nil, errors.New("PathInfo.Parent: no parent")
 	}
 	return &PathInfo{Pathname: pathInfo.Pathname[:i], IsDir: true}, nil
 }
@@ -61,4 +64,8 @@ type ErrorCode int
 type Error struct {
 	Code    ErrorCode
 	Message string
+}
+
+func (err Error) Error() string {
+	return err.Message
 }
