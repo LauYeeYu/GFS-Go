@@ -2,6 +2,8 @@ package gfs
 
 import "strings"
 
+type Namespace string
+
 // Chunk & file commons
 
 type ChunkHandle int64  // global unique identifier for a chunk
