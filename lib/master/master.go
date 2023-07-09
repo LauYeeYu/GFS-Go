@@ -25,7 +25,7 @@ type Master struct {
 	listener net.Listener
 
 	// shutdown
-	shutdown chan bool
+	shutdown chan struct{}
 }
 
 // MakeMaster creates a new Master instance
@@ -38,7 +38,7 @@ func MakeMaster(server gfs.ServerInfo, storageDir string) *Master {
 		chunks:       make(map[gfs.ChunkHandle]*ChunkMetadata),
 		chunkservers: make([]gfs.ServerInfo, 0),
 
-		shutdown: make(chan bool),
+		shutdown: make(chan struct{}),
 	}
 }
 
