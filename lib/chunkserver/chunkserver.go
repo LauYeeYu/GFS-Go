@@ -138,7 +138,28 @@ func (chunkserver *Chunkserver) sendHeartBeat() error {
 		chunk.RUnlock()
 	}
 	chunkserver.chunksLock.RUnlock()
-	return utils.RemoteCall(chunkserver.master, "Master.ReceiveHeartBeatRPC",
+	reply := gfs.HeartBeatReply{}
+	err := utils.RemoteCall(chunkserver.master, "Master.ReceiveHeartBeatRPC",
 		gfs.HeartBeatArgs{ServerInfo: chunkserver.server, Chunks: chunks},
-		&gfs.HeartBeatReply{})
+		&reply)
+	if err != nil {
+		return err
+	}
+	for _, chunkHandle := range reply.ExpiredChunks {
+		_ = chunkserver.removeChunkAndMeta(chunkHandle)
+	}
+	return nil
+}
+
+func (chunkserver *Chunkserver) removeChunkAndMeta(chunkHandle gfs.ChunkHandle) error {
+	chunkserver.chunksLock.Lock()
+	chunk, exists := chunkserver.chunks[chunkHandle]
+	if !exists {
+		chunkserver.chunksLock.Unlock()
+		return errors.New("Chunkserver.removeChunk: chunk does not exist")
+	}
+	delete(chunkserver.chunks, chunkHandle)
+	chunkserver.chunksLock.Unlock()
+	chunk.removeChunk(chunkserver)
+	return nil
 }

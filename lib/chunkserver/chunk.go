@@ -87,7 +87,19 @@ func LoadChunkMetadata(
 	}
 	if !chunk.checksum.Check(chunkData) {
 		log.Println("Checksum mismatch")
+		chunk.removeChunk(chunkserver)
 		return nil
 	}
 	return &chunk
+}
+
+// removeChunk removes the chunk from the chunkserver.
+// Note: this function only removes the chunk and its metadata from the disk.
+// It does not remove the chunk from the chunkserver's chunk list.
+func (chunk *Chunk) removeChunk(chunkserver *Chunkserver) {
+	chunkserver.chunksLock.Lock()
+	defer chunkserver.chunksLock.Unlock()
+	_ = os.Remove(chunkserver.chunksDir + "/" + chunk.handle.String())
+	_ = os.Remove(chunkserver.chunksDir + "/" + chunk.handle.String() + ".version")
+	_ = os.Remove(chunkserver.chunksDir + "/" + chunk.handle.String() + ".checksum")
 }
