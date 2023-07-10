@@ -65,3 +65,15 @@ func (namespace *NamespaceMetadata) LockAncestors(pathInfo *gfs.PathInfo) bool {
 	}
 	return true
 }
+
+func (chunkMeta *ChunkMetadata) removeChunkserver(server gfs.ServerInfo) {
+	chunkMeta.Lock.Lock()
+	defer chunkMeta.Lock.Unlock()
+	delete(chunkMeta.Servers, server)
+}
+
+func (chunkMeta *ChunkMetadata) addChunkserver(server gfs.ServerInfo) {
+	chunkMeta.Lock.Lock()
+	defer chunkMeta.Lock.Unlock()
+	chunkMeta.Servers[server] = true
+}

@@ -13,4 +13,6 @@ type HeartBeatArgs struct {
 	Chunks     []ChunkInfo
 }
 
-type HeartBeatReply struct{}
+type HeartBeatReply struct {
+	ExpiredChunks []ChunkHandle
+}

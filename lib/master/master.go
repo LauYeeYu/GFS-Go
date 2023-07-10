@@ -18,7 +18,7 @@ type Master struct {
 	namespacesLock   sync.RWMutex
 	chunks           map[gfs.ChunkHandle]*ChunkMetadata
 	chunksLock       sync.RWMutex
-	chunkservers     []gfs.ServerInfo
+	chunkservers     map[gfs.ServerInfo]struct{}
 	chunkserversLock sync.RWMutex
 
 	// RPC
@@ -36,7 +36,7 @@ func MakeMaster(server gfs.ServerInfo, storageDir string) *Master {
 
 		namespaces:   make(map[gfs.Namespace]*NamespaceMetadata),
 		chunks:       make(map[gfs.ChunkHandle]*ChunkMetadata),
-		chunkservers: make([]gfs.ServerInfo, 0),
+		chunkservers: make(map[gfs.ServerInfo]struct{}),
 
 		shutdown: make(chan struct{}),
 	}
@@ -117,6 +117,36 @@ func (master *Master) ReceiveHeartBeatRPC(
 	args gfs.HeartBeatArgs,
 	reply *gfs.HeartBeatReply,
 ) error {
-	// TODO: implement ReceiveHeartBeatRPC
+	// register new chunkserver if needed
+	master.chunkserversLock.Lock()
+	_, exist := master.chunkservers[args.ServerInfo]
+	if !exist {
+		log.Printf("New chunkserver %v joined\n", args.ServerInfo)
+		master.chunkservers[args.ServerInfo] = struct{}{}
+	}
+	master.chunkserversLock.Unlock()
+
+	// update chunk status
+	expiredChunks := make([]gfs.ChunkHandle, 0)
+	for _, chunk := range args.Chunks {
+		master.chunksLock.Lock()
+		chunkMeta, existChunk := master.chunks[chunk.Handle]
+		if existChunk {
+			if chunk.Version < master.chunks[chunk.Handle].Version {
+				log.Printf("Chunk %v version %v is stale, ignore\n",
+					chunk.Handle, chunk.Version)
+				expiredChunks = append(expiredChunks, chunk.Handle)
+				chunkMeta.removeChunkserver(args.ServerInfo)
+			} else {
+				chunkMeta.addChunkserver(args.ServerInfo)
+			}
+		} else {
+			log.Printf("Chunk %v does not exist, ignore\n", chunk.Handle)
+		}
+		master.chunksLock.Unlock()
+	}
+
+	// return expired chunks
+	reply.ExpiredChunks = expiredChunks
 	return nil
 }
