@@ -3,6 +3,7 @@ package master
 import (
 	"errors"
 	"gfs"
+	"gfs/chunkserver"
 	"log"
 	"net"
 	"net/rpc"
@@ -109,5 +110,14 @@ func (master *Master) periodicCheck() {
 		default:
 		}
 		<-ticker
+		// TODO: implement periodic check
 	}
+}
+
+func (master *Master) ReceiveHeartBeatRPC(
+	args chunkserver.HeartBeatArgs,
+	reply *struct{},
+) error {
+	// TODO: implement ReceiveHeartBeatRPC
+	return nil
 }

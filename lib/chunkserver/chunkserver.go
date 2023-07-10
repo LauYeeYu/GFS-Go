@@ -1,23 +1,34 @@
 package chunkserver
 
 import (
+	"errors"
 	"gfs"
 	"log"
+	"net"
+	"net/rpc"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Chunkserver struct {
-	server     gfs.ServerInfo
-	master     gfs.ServerInfo
+	server   gfs.ServerInfo
+	master   gfs.ServerInfo
+	listener net.Listener
+
+	// storage
 	storageDir string
 	chunksDir  string
 	leasesDir  string
 
+	// chunks
 	chunks     map[gfs.ChunkHandle]*Chunk
 	chunksLock sync.RWMutex
+
+	// shutdown
+	shutdown chan struct{}
 }
 
 // MakeChunkserver creates a new Chunkserver instance
@@ -34,14 +45,14 @@ func MakeChunkserver(
 		leasesDir:  storageDir + "/leases",
 		chunks:     make(map[gfs.ChunkHandle]*Chunk),
 	}
-	if err := chunkserver.LoadChunks(); err != nil {
+	if err := chunkserver.loadChunks(); err != nil {
 		log.Println(err.Error())
 		return nil
 	}
 	return &chunkserver
 }
 
-func (chunkserver *Chunkserver) LoadChunks() error {
+func (chunkserver *Chunkserver) loadChunks() error {
 	files, err := os.ReadDir(chunkserver.chunksDir)
 	if err != nil {
 		log.Println(err.Error())
@@ -68,4 +79,44 @@ func (chunkserver *Chunkserver) LoadChunks() error {
 		}
 	}
 	return nil
+}
+
+func (chunkserver *Chunkserver) Start() error {
+	service := rpc.NewServer()
+	if err := service.Register(chunkserver); err != nil {
+		log.Println(err.Error())
+		return errors.New("Master.Start: Register failed")
+	}
+	listener, err := net.Listen("tcp", chunkserver.server.ServerAddr)
+	if err != nil {
+		log.Println(err.Error())
+		return errors.New("Master.Start: Listen failed")
+	}
+	chunkserver.listener = listener
+
+	// send HeartBeat
+	go func() {
+		for {
+			err := chunkserver.sendHeartBeat()
+			if err != nil {
+				log.Println(err.Error())
+			}
+			time.Sleep(gfs.HeartbeatInterval)
+		}
+	}()
+
+	// handle all RPCs
+	go chunkserver.handleAllRPCs()
+	return nil
+}
+
+func (chunkserver *Chunkserver) handleAllRPCs() {
+	for {
+		conn, err := chunkserver.listener.Accept()
+		if err != nil {
+			log.Println(err.Error())
+			continue
+		}
+		go rpc.ServeConn(conn)
+	}
 }
