@@ -7,15 +7,22 @@ import (
 )
 
 type NamespaceMetadata struct {
-	Files       map[gfs.PathInfo]FileMetadata
+	Files       map[string]FileMetadata
 	FilesLock   sync.RWMutex
-	Directories map[string]gfs.PathInfo
+	Directories map[string]DirectoryInfo
 	FirsLock    sync.RWMutex
 	Locks       map[string]sync.RWMutex
 	LocksLock   sync.RWMutex
 
 	// access control
 	// TODO: add access control
+}
+
+type DirectoryInfo struct {
+	Files       map[string]struct{} // full pathname
+	FilesLock   sync.RWMutex
+	Directories map[string]struct{} // full pathname
+	FirsLock    sync.RWMutex
 }
 
 type FileMetadata struct {
