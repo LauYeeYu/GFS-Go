@@ -3,6 +3,7 @@ package chunkserver
 import (
 	"errors"
 	"gfs"
+	"gfs/utils"
 	"log"
 	"net"
 	"net/rpc"
@@ -119,4 +120,25 @@ func (chunkserver *Chunkserver) handleAllRPCs() {
 		}
 		go rpc.ServeConn(conn)
 	}
+}
+
+func (chunkserver *Chunkserver) sendHeartBeat() error {
+	chunks := make([]gfs.ChunkInfo, 0)
+	chunkserver.chunksLock.RLock()
+	for _, chunk := range chunkserver.chunks {
+		chunk.RLock()
+		chunks = append(
+			chunks,
+			gfs.ChunkInfo{
+				Version: chunk.version,
+				Handle:  chunk.handle,
+				Length:  chunk.length,
+			},
+		)
+		chunk.RUnlock()
+	}
+	chunkserver.chunksLock.RUnlock()
+	return utils.RemoteCall(chunkserver.master, "Master.ReceiveHeartBeatRPC",
+		gfs.HeartBeatArgs{ServerInfo: chunkserver.server, Chunks: chunks},
+		&gfs.HeartBeatReply{})
 }

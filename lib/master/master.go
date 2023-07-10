@@ -3,7 +3,6 @@ package master
 import (
 	"errors"
 	"gfs"
-	"gfs/chunkserver"
 	"log"
 	"net"
 	"net/rpc"
@@ -115,8 +114,8 @@ func (master *Master) periodicCheck() {
 }
 
 func (master *Master) ReceiveHeartBeatRPC(
-	args chunkserver.HeartBeatArgs,
-	reply *struct{},
+	args gfs.HeartBeatArgs,
+	reply *gfs.HeartBeatReply,
 ) error {
 	// TODO: implement ReceiveHeartBeatRPC
 	return nil
