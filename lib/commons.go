@@ -64,13 +64,10 @@ func MakePathInfo(pathname string, isDir bool) *PathInfo {
 
 // Errors
 
-type ErrorCode int
-
-type Error struct {
-	Code    ErrorCode
-	Message string
+type FatalError struct {
+	error
 }
 
-func (err Error) Error() string {
-	return err.Message
+func NewFatalError(err error) *FatalError {
+	return &FatalError{err}
 }

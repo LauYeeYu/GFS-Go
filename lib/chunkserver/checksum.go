@@ -1,6 +1,7 @@
 package chunkserver
 
 import (
+	"gfs"
 	"hash/crc32"
 	"os"
 )
@@ -14,13 +15,13 @@ func (checksum *Checksum) UpdateWithByteString(data []byte) {
 func (checksum *Checksum) Update(file *os.File) error {
 	fileStatus, err := file.Stat()
 	if err != nil {
-		return err
+		return gfs.NewFatalError(err)
 	}
 	fileSize := fileStatus.Size()
 	data := make([]byte, fileSize)
 	_, err = file.Read(data)
 	if err != nil {
-		return err
+		return gfs.NewFatalError(err)
 	}
 	checksum.UpdateWithByteString(data)
 	return nil
