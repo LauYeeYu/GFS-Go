@@ -10,7 +10,7 @@ type NamespaceMetadata struct {
 	Files       map[string]FileMetadata
 	FilesLock   sync.RWMutex
 	Directories map[string]DirectoryInfo
-	FirsLock    sync.RWMutex
+	DirsLock    sync.RWMutex
 	Locks       map[string]sync.RWMutex
 	LocksLock   sync.RWMutex
 
@@ -40,6 +40,16 @@ type ChunkMetadata struct {
 
 	// In-memory data
 	Servers map[gfs.ServerInfo]bool // initialized with HeartBeat
+}
+
+func (namespace *NamespaceMetadata) alreadyExists(pathname string) bool {
+	namespace.FilesLock.RLock()
+	_, ok1 := namespace.Files[pathname]
+	namespace.FilesLock.RUnlock()
+	namespace.DirsLock.RLock()
+	_, ok2 := namespace.Directories[pathname]
+	namespace.DirsLock.RUnlock()
+	return ok1 || ok2
 }
 
 func (namespace *NamespaceMetadata) lockFileOrDirectory(pathname string, readOnly bool) {
