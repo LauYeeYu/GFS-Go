@@ -13,7 +13,7 @@ type Namespace string
 type ChunkHandle int64  // global unique identifier for a chunk
 type ChunkVersion int64 // version number for a chunk
 type ChunkIndex int64   // index of a chunk in a file
-type Offset int64       // offset in a file
+type Length int64       // length of a chunk or file
 
 func (chunkHandle ChunkHandle) String() string {
 	return strconv.FormatInt(int64(chunkHandle), 10)

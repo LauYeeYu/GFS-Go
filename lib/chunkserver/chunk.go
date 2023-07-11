@@ -11,7 +11,7 @@ import (
 type Chunk struct {
 	version   gfs.ChunkVersion // stored in $storageDir/chunks/$handle.version
 	handle    gfs.ChunkHandle
-	length    int64
+	length    gfs.Length
 	chunkFile *os.File // stored in $storageDir/chunks/$handle
 	checksum  Checksum // stored in $storageDir/chunks/$handle.checksum
 	sync.RWMutex
@@ -71,7 +71,7 @@ func LoadChunkMetadata(
 	chunk := Chunk{
 		version:   gfs.ChunkVersion(version),
 		handle:    handle,
-		length:    chunkFileStatus.Size(),
+		length:    gfs.Length(chunkFileStatus.Size()),
 		chunkFile: chunkFile,
 		checksum:  checksum,
 	}

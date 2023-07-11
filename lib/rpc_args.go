@@ -5,7 +5,7 @@ package gfs
 type ChunkInfo struct {
 	Version ChunkVersion
 	Handle  ChunkHandle
-	Length  int64
+	Length  Length
 }
 
 type HeartBeatArgs struct {
