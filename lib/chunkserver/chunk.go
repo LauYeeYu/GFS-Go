@@ -14,13 +14,8 @@ type Chunk struct {
 	length    int64
 	chunkFile *os.File // stored in $storageDir/chunks/$handle
 	checksum  Checksum // stored in $storageDir/chunks/$handle.checksum
-	lock      sync.RWMutex
+	sync.RWMutex
 }
-
-func (chunk *Chunk) Lock()    { chunk.lock.Lock() }
-func (chunk *Chunk) Unlock()  { chunk.lock.Unlock() }
-func (chunk *Chunk) RLock()   { chunk.lock.RLock() }
-func (chunk *Chunk) RUnlock() { chunk.lock.RUnlock() }
 
 func (chunk *Chunk) Read() ([]byte, error) {
 	chunk.RLock()

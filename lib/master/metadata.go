@@ -14,7 +14,7 @@ type NamespaceMetadata struct {
 	Files       map[string]FileMetadata
 	Directories map[string]DirectoryInfo
 	Locks       map[string]sync.RWMutex
-	Lock        sync.RWMutex
+	sync.RWMutex
 
 	// access control
 	// TODO: add access control
@@ -23,16 +23,16 @@ type NamespaceMetadata struct {
 type DirectoryInfo struct {
 	Files       map[string]struct{} // full pathname
 	Directories map[string]struct{} // full pathname
-	Lock        sync.RWMutex
+	sync.RWMutex
 }
 
 type FileMetadata struct {
 	Chunks []gfs.ChunkHandle
-	Lock   sync.RWMutex
+	sync.RWMutex
 }
 
 type ChunkMetadata struct {
-	Lock sync.RWMutex
+	sync.RWMutex
 	// Persistent data
 	Version     gfs.ChunkVersion
 	RefCount    int
@@ -179,13 +179,13 @@ func (namespace *NamespaceMetadata) unlockAncestors(pathInfo *gfs.PathInfo) {
 }
 
 func (chunkMeta *ChunkMetadata) removeChunkserver(server gfs.ServerInfo) {
-	chunkMeta.Lock.Lock()
-	defer chunkMeta.Lock.Unlock()
+	chunkMeta.Lock()
+	defer chunkMeta.Unlock()
 	delete(chunkMeta.Servers, server)
 }
 
 func (chunkMeta *ChunkMetadata) addChunkserver(server gfs.ServerInfo) {
-	chunkMeta.Lock.Lock()
-	defer chunkMeta.Lock.Unlock()
+	chunkMeta.Lock()
+	defer chunkMeta.Unlock()
 	chunkMeta.Servers[server] = true
 }
