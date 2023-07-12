@@ -19,8 +19,8 @@ lock. When there is a mutation on the metadata of a certain file or a
 directory, we need to acquire the read locks of all its prefix
 directories and either the write lock or the read lock of itself.
 
-File creation does not require a write lock on the parent directory because
-there is no real directory.
+Different from the vanilla GFS, file creation and deletion needs to require
+a write lock on the parent directory.
 
 To avoid deadlock, we need to acquire in a consistent total order: they are
 first ordered by level in the namespace tree and lexicographically within

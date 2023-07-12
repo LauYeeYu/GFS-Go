@@ -138,3 +138,13 @@ in the document for master.
 - garbage collection interval
 - *HeartBeat* interval
 - lease duration
+
+## Changes from the Vanilla GFS
+
+### Per-Directory Structure
+
+There exists a per-directory structure for namespace management. This is a
+workaround because the builtin map is an unordered map.
+
+Therefore, when creating or deleting a file, we need to acquire the write lock
+of the parent directory.
