@@ -43,7 +43,7 @@ type ChunkMetadata struct {
 }
 
 // alreadyExists returns true if the file or directory already exists
-// Note: this method is not thread-safe, caller should hold the lock
+// Note: this method is not concurrency-safe.
 func (namespace *NamespaceMetadata) alreadyExists(pathname string) bool {
 	_, ok1 := namespace.Files[pathname]
 	_, ok2 := namespace.Directories[pathname]
@@ -52,7 +52,7 @@ func (namespace *NamespaceMetadata) alreadyExists(pathname string) bool {
 
 // lockFileOrDirectory locks the file or directory
 // This function will not lock the ancestors of the file or directory
-// Note: this method is not thread-safe, caller should hold the lock of the namespace
+// Note: this method is not concurrency-safe.
 func (namespace *NamespaceMetadata) lockFileOrDirectory(pathname string, readOnly bool) error {
 	if lock, ok := namespace.Locks[pathname]; ok {
 		if readOnly {
@@ -66,7 +66,7 @@ func (namespace *NamespaceMetadata) lockFileOrDirectory(pathname string, readOnl
 }
 
 // unlockFileOrDirectory unlocks the file or directory
-// Note: this method is not thread-safe, caller should hold the lock of the namespace
+// Note: this method is not concurrency-safe.
 func (namespace *NamespaceMetadata) unlockFileOrDirectory(pathname string, readOnly bool) error {
 	if lock, ok := namespace.Locks[pathname]; ok {
 		if readOnly {
@@ -80,7 +80,7 @@ func (namespace *NamespaceMetadata) unlockFileOrDirectory(pathname string, readO
 }
 
 // LockFile locks the file
-// Note: this method is not thread-safe, caller should hold the lock of the namespace
+// Note: this method is not concurrency-safe.
 func (namespace *NamespaceMetadata) LockFile(pathname string, readOnly bool) error {
 	_, ok := namespace.Files[pathname]
 	if !ok {
@@ -99,7 +99,7 @@ func (namespace *NamespaceMetadata) LockFile(pathname string, readOnly bool) err
 }
 
 // LockDirectory locks the directory
-// Note: this method is not thread-safe, caller should hold the lock of the namespace
+// Note: this method is not concurrency-safe.
 func (namespace *NamespaceMetadata) LockDirectory(pathname string, readOnly bool) error {
 	_, ok := namespace.Directories[pathname]
 	if !ok {
@@ -118,9 +118,10 @@ func (namespace *NamespaceMetadata) LockDirectory(pathname string, readOnly bool
 }
 
 // lockAncestors locks all ancestors of a path
-// Return true if all ancestors are locked successfully
-// Return false if any ancestor is locked by others
-// The operation is done hierarchically from the root to the leaf
+// Return true if all ancestors are locked successfully.
+// Return false if any ancestor is locked by others.
+// The operation is done hierarchically from the root to the leaf.
+// Note: this method is not concurrency-safe.
 func (namespace *NamespaceMetadata) lockAncestors(pathInfo *gfs.PathInfo) error {
 	parent, err := pathInfo.Parent()
 	if err != nil {
@@ -140,6 +141,9 @@ func (namespace *NamespaceMetadata) lockAncestors(pathInfo *gfs.PathInfo) error 
 	return nil
 }
 
+// unlockAncestors unlocks all ancestors of a path
+// The operation is done hierarchically from the root to the leaf.
+// Note: this method is not concurrency-safe.
 func (namespace *NamespaceMetadata) unlockAncestors(pathInfo *gfs.PathInfo) {
 	parent, err := pathInfo.Parent()
 	if err != nil {
