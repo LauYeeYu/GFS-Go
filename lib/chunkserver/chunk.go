@@ -143,7 +143,7 @@ func (chunk *Chunk) internalRangedWrite(offset gfs.Length, data []byte) error {
 func (chunk *Chunk) rangedWrite(offset gfs.Length, data []byte) error {
 	end := offset + gfs.Length(len(data))
 	chunkLength := chunk.length()
-	if offset < 0 || end >= chunkLength {
+	if offset < 0 || end > gfs.ChunkSize {
 		return errors.New(fmt.Sprintf("write data (%v-%v) out of range (0-%v)",
 			offset, end, chunkLength))
 	}
