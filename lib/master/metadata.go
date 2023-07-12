@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"gfs"
-	"gfs/utils"
 	"log"
 	"sync"
 	"time"
@@ -114,28 +113,6 @@ func (namespace *NamespaceMetadata) LockDirectory(pathname string, readOnly bool
 	if err != nil {
 		namespace.unlockAncestors(&gfs.PathInfo{Pathname: pathname, IsDir: true})
 		return err
-	}
-
-	// lock all files and directory in the directory
-	queue := utils.Queue[string]{}
-	queue.Push(pathname)
-	for !queue.Empty() {
-		// lock files
-		pathname := queue.Pop()
-		directory, _ := namespace.Directories[pathname]
-		filesInThisDirectory := utils.Keys(&directory.Files)
-		utils.SortByDefault(filesInThisDirectory)
-		for _, file := range filesInThisDirectory {
-			_ = namespace.lockFileOrDirectory(file, readOnly)
-		}
-
-		// lock directories
-		directoriesInThisDirectory := utils.Keys(&directory.Directories)
-		utils.SortByDefault(directoriesInThisDirectory)
-		for _, directory := range directoriesInThisDirectory {
-			_ = namespace.lockFileOrDirectory(directory, readOnly)
-			queue.Push(directory)
-		}
 	}
 	return nil
 }
