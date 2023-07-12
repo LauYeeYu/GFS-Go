@@ -132,7 +132,7 @@ func (chunkserver *Chunkserver) sendHeartBeat() error {
 			gfs.ChunkInfo{
 				Version: chunk.version,
 				Handle:  chunk.handle,
-				Length:  chunk.length,
+				Length:  chunk.length(),
 			},
 		)
 		chunk.RUnlock()
