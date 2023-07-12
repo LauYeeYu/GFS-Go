@@ -159,6 +159,97 @@ func (namespace *NamespaceMetadata) unlockAncestors(pathInfo *gfs.PathInfo) {
 	}
 }
 
+func (namespace *NamespaceMetadata) addDirectoryIfNotExists(pathname string) {
+	if _, ok := namespace.Directories[pathname]; !ok {
+		namespace.Directories[pathname] = DirectoryInfo{
+			Files:       map[string]struct{}{},
+			Directories: map[string]struct{}{},
+		}
+		namespace.Locks[pathname] = sync.RWMutex{}
+	}
+}
+
+func (namespace *NamespaceMetadata) addAllParentDirectoriesIfNotExists(pathname string) {
+	parent, err := (&gfs.PathInfo{Pathname: pathname, IsDir: false}).Parent()
+	if err != nil {
+		return // the case that the file is in the root directory
+	}
+	for index := range parent.Pathname {
+		if index != 0 && parent.Pathname[index] == '/' {
+			namespace.addDirectoryIfNotExists(parent.Pathname[:index])
+		}
+	}
+}
+
+// addFile adds a file to the namespace
+// The parent directories must exist. A suggested way is to lock the namespace
+// first, add all parent directories, and lock these directories before adding
+// the file.
+// Note: this method is not concurrency-safe, the caller should hold the write
+// lock of the namespace.
+func (namespace *NamespaceMetadata) addFile(pathname string) error {
+	if _, ok := namespace.Files[pathname]; ok {
+		return errors.New(fmt.Sprintf("file %s already exists", pathname))
+	}
+	namespace.Files[pathname] = FileMetadata{Chunks: []gfs.ChunkHandle{}}
+	namespace.Locks[pathname] = sync.RWMutex{}
+	return nil
+}
+
+// tryRemoveParentsWhenRemoved tries to remove all empty parent directories
+// when a file or directory is removed. The operation is done recursively.
+// Note: this method is not concurrency-safe, the caller should hold the write
+// lock of the namespace.
+func (namespace *NamespaceMetadata) tryRemoveParentsWhenRemoved(pathname string) {
+	parent, err := (&gfs.PathInfo{Pathname: pathname, IsDir: false}).Parent()
+	if err != nil {
+		return // the case in the root directory
+	}
+	if len(namespace.Directories[parent.Pathname].Files) == 0 &&
+		len(namespace.Directories[parent.Pathname].Directories) == 0 {
+		delete(namespace.Directories, parent.Pathname)
+		delete(namespace.Locks, parent.Pathname)
+	}
+	namespace.tryRemoveParentsWhenRemoved(parent.Pathname)
+}
+
+// deleteFile deletes a file from the namespace
+// The file should have no chunks. A suggested way is to remove all chunks
+// first, and then delete the file.
+// Note: this method is not concurrency-safe, the caller should hold the write
+// lock of the namespace.
+func (namespace *NamespaceMetadata) deleteFile(pathname string) error {
+	if _, ok := namespace.Files[pathname]; !ok {
+		return errors.New(fmt.Sprintf("file %s does not exist", pathname))
+	}
+	if len(namespace.Files[pathname].Chunks) != 0 {
+		return errors.New(fmt.Sprintf("file %s still has chunks", pathname))
+	}
+	delete(namespace.Files, pathname)
+	delete(namespace.Locks, pathname)
+	namespace.tryRemoveParentsWhenRemoved(pathname)
+	return nil
+}
+
+// moveFile moves a file from oldPathname to newPathname
+// Note: this method is not concurrency-safe, the caller should hold the write
+// lock of the namespace.
+func (namespace *NamespaceMetadata) moveFile(oldPathname, newPathname string) error {
+	if _, ok := namespace.Files[oldPathname]; !ok {
+		return errors.New(fmt.Sprintf("source file %s does not exist", oldPathname))
+	}
+	if _, ok := namespace.Files[newPathname]; ok {
+		return errors.New(fmt.Sprintf("target file %s already exists", newPathname))
+	}
+	chunks := namespace.Files[oldPathname].Chunks
+	delete(namespace.Files, oldPathname)
+	delete(namespace.Locks, oldPathname)
+	namespace.Files[newPathname] = FileMetadata{Chunks: chunks}
+	namespace.Locks[newPathname] = sync.RWMutex{}
+	namespace.tryRemoveParentsWhenRemoved(oldPathname)
+	return nil
+}
+
 func (chunkMeta *ChunkMetadata) removeChunkserver(server gfs.ServerInfo) {
 	chunkMeta.Lock()
 	defer chunkMeta.Unlock()
