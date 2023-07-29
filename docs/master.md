@@ -12,15 +12,15 @@ The master stores three major types of metadata:
 
 ### Namespace Management
 
-A namespace represents a lookup table mapping full pathname to metadata.
+Different from the vanilla GFS, a namespace has a directory tree structure.
+Each directory and file has a unique name within its parent directory. The
+namespace structure holds the root directory. File creation and deletion
+needs to require a write lock on the parent directory.
 
 To achieve finer granularity, each directory and file has its own read-write
 lock. When there is a mutation on the metadata of a certain file or a
 directory, we need to acquire the read locks of all its prefix
 directories and either the write lock or the read lock of itself.
-
-Different from the vanilla GFS, file creation and deletion needs to require
-a write lock on the parent directory.
 
 To avoid deadlock, we need to acquire in a consistent total order: they are
 first ordered by level in the namespace tree and lexicographically within

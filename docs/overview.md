@@ -141,10 +141,15 @@ in the document for master.
 
 ## Changes from the Vanilla GFS
 
-### Per-Directory Structure
+### Directory Structure as a Tree
 
-There exists a per-directory structure for namespace management. This is a
-workaround because the builtin map is an unordered map.
+We use a tree structure to represent the directory structure. Each directory
+has a map of directories and files. This means we should have the write lock
+of the parent directory to create a new file or directory.
 
-Therefore, when creating or deleting a file, we need to acquire the write lock
-of the parent directory.
+The reason why we make this change as oppose to the large flat namespace is
+that
+1. it is easier to implement;
+2. this can avoid the busy race condition on the lock of the namespace map;
+3. memory efficiency is no longer a important thing nowadays;
+4. This provides more functions concerned with the directory structure.
