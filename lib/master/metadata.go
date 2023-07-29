@@ -4,24 +4,30 @@ import (
 	"errors"
 	"fmt"
 	"gfs"
-	"log"
+	"gfs/utils"
 	"sync"
 	"time"
 )
 
 type NamespaceMetadata struct {
-	Files       map[string]FileMetadata
-	Directories map[string]DirectoryInfo
-	Locks       map[string]sync.RWMutex
+	Root *DirectoryInfo
 	sync.RWMutex
+}
 
-	// access control
-	// TODO: add access control
+func MakeNamespace() *NamespaceMetadata {
+	return &NamespaceMetadata{
+		Root: &DirectoryInfo{
+			Parent:      nil,
+			Files:       map[string]*FileMetadata{},
+			Directories: map[string]*DirectoryInfo{},
+		},
+	}
 }
 
 type DirectoryInfo struct {
-	Files       map[string]struct{} // full pathname
-	Directories map[string]struct{} // full pathname
+	Parent      *DirectoryInfo
+	Files       map[string]*FileMetadata  // relative path -> file metadata
+	Directories map[string]*DirectoryInfo // relative path -> directory metadata
 	sync.RWMutex
 }
 
@@ -42,211 +48,353 @@ type ChunkMetadata struct {
 	Servers map[gfs.ServerInfo]bool // initialized with HeartBeat
 }
 
-// alreadyExists returns true if the file or directory already exists
-// Note: this method is not concurrency-safe.
-func (namespace *NamespaceMetadata) alreadyExists(pathname string) bool {
-	_, ok1 := namespace.Files[pathname]
-	_, ok2 := namespace.Directories[pathname]
-	return ok1 || ok2
+// exists returns true if the file or directory already exists
+func (namespace *NamespaceMetadata) exists(pathname string) bool {
+	err := namespace.LockFileOrDirectory(pathname, true)
+	if err != nil {
+		return false
+	}
+	_ = namespace.UnlockFileOrDirectory(pathname, true)
+	return true
 }
 
-// lockFileOrDirectory locks the file or directory
-// This function will not lock the ancestors of the file or directory
-// Note: this method is not concurrency-safe.
-func (namespace *NamespaceMetadata) lockFileOrDirectory(pathname string, readOnly bool) error {
-	if lock, ok := namespace.Locks[pathname]; ok {
-		if readOnly {
-			lock.RLock()
+func (namespace *NamespaceMetadata) getDirectory(pathname string) (*DirectoryInfo, error) {
+	segments := utils.ParsePath(pathname)
+	current := namespace.Root
+	for _, segment := range segments {
+		if subdirectory, ok := current.Directories[segment]; ok {
+			current = subdirectory
 		} else {
-			lock.Lock()
+			return nil, errors.New(fmt.Sprintf("directory %s does not exist", pathname))
+		}
+	}
+	return current, nil
+}
+
+func (namespace *NamespaceMetadata) lockAndGetDirectory(
+	pathname string,
+	readOnly bool,
+) (*DirectoryInfo, error) {
+	err := namespace.LockFileOrDirectory(pathname, readOnly)
+	if err != nil {
+		return nil, err
+	}
+	parentDir, err := namespace.getDirectory(pathname)
+	if err != nil {
+		_ = namespace.UnlockFileOrDirectory(pathname, readOnly)
+		return nil, err
+	}
+	return parentDir, nil
+}
+
+// getFile returns the file metadata of the file
+// Note: this method is not concurrency-safe, the caller should hold the read
+// lock of all its parent directories.
+func (namespace *NamespaceMetadata) getFile(pathname string) (*FileMetadata, error) {
+	parent, err := utils.Parent(pathname)
+	if err != nil {
+		return nil, err
+	}
+	dir, err := namespace.getDirectory(parent)
+	if err != nil {
+		return nil, err
+	}
+	if file, ok := dir.Files[utils.LastSegment(pathname)]; ok {
+		return file, nil
+	} else {
+		return nil, errors.New(fmt.Sprintf("file %s does not exist", pathname))
+	}
+}
+
+func (dir *DirectoryInfo) lockFileOrDirectory(segments []string, readOnly bool) error {
+	if len(segments) == 0 {
+		if readOnly {
+			dir.RLock()
+		} else {
+			dir.Lock()
 		}
 		return nil
 	}
-	return errors.New(fmt.Sprintf("file or directory %s does not exist", pathname))
+	dir.RLock()
+	if subdirectory, ok := dir.Directories[segments[0]]; ok {
+		err := subdirectory.lockFileOrDirectory(segments[1:], readOnly)
+		if err != nil {
+			dir.RUnlock()
+		}
+		return err
+	} else if file, ok := dir.Files[segments[0]]; ok {
+		if len(segments) == 1 { // the last segment
+			if readOnly {
+				file.RLock()
+			} else {
+				file.Lock()
+			}
+			return nil
+		} else { // not the last segment
+			return errors.New(fmt.Sprintf("file %s is not a directory", segments[0]))
+		}
+	} else { // the file or directory does not exist
+		return errors.New(fmt.Sprintf("file or directory %s does not exist", segments[0]))
+	}
 }
 
-// unlockFileOrDirectory unlocks the file or directory
-// Note: this method is not concurrency-safe.
-func (namespace *NamespaceMetadata) unlockFileOrDirectory(pathname string, readOnly bool) error {
-	if lock, ok := namespace.Locks[pathname]; ok {
-		if readOnly {
-			lock.RUnlock()
-		} else {
-			lock.Unlock()
-		}
+func (dir *DirectoryInfo) lockWithLockTask(task *LockTask) error {
+	if task == nil {
 		return nil
 	}
-	return errors.New(fmt.Sprintf("file or directory %s does not exist", pathname))
-}
 
-// LockFile locks the file
-// Note: this method is not concurrency-safe.
-func (namespace *NamespaceMetadata) LockFile(pathname string, readOnly bool) error {
-	_, ok := namespace.Files[pathname]
-	if !ok {
-		return errors.New(fmt.Sprintf("file %s does not exist", pathname))
+	// lock itself
+	if task.readOnly {
+		dir.RLock()
+	} else {
+		dir.Lock()
 	}
-	err := namespace.lockAncestors(&gfs.PathInfo{Pathname: pathname, IsDir: false})
-	if err != nil {
-		return err
-	}
-	err = namespace.lockFileOrDirectory(pathname, readOnly)
-	if err != nil {
-		namespace.unlockAncestors(&gfs.PathInfo{Pathname: pathname, IsDir: false})
-		return err
-	}
-	return nil
-}
 
-// LockDirectory locks the directory
-// Note: this method is not concurrency-safe.
-func (namespace *NamespaceMetadata) LockDirectory(pathname string, readOnly bool) error {
-	_, ok := namespace.Directories[pathname]
-	if !ok {
-		return errors.New(fmt.Sprintf("directory %s does not exist", pathname))
-	}
-	err := namespace.lockAncestors(&gfs.PathInfo{Pathname: pathname, IsDir: true})
-	if err != nil {
-		return err
-	}
-	err = namespace.lockFileOrDirectory(pathname, readOnly)
-	if err != nil {
-		namespace.unlockAncestors(&gfs.PathInfo{Pathname: pathname, IsDir: true})
-		return err
-	}
-	return nil
-}
-
-// lockAncestors locks all ancestors of a path
-// Return true if all ancestors are locked successfully.
-// Return false if any ancestor is locked by others.
-// The operation is done hierarchically from the root to the leaf.
-// Note: this method is not concurrency-safe.
-func (namespace *NamespaceMetadata) lockAncestors(pathInfo *gfs.PathInfo) error {
-	parent, err := pathInfo.Parent()
-	if err != nil {
-		return err
-	}
-	for index := range parent.Pathname {
-		if index != 0 && parent.Pathname[index] == '/' {
-			err = namespace.lockFileOrDirectory(parent.Pathname[:index], true)
+	// traverse through the subtasks
+	for i, subtask := range task.Subtasks {
+		cleanup := func() {
+			unlockTask := &LockTask{
+				Name:     task.Name,
+				readOnly: task.readOnly,
+				Subtasks: task.Subtasks[:i],
+			}
+			_ = dir.unlockWithLockTask(unlockTask)
+		}
+		if subdirectory, ok := dir.Directories[subtask.Name]; ok {
+			err := subdirectory.lockWithLockTask(subtask)
 			if err != nil {
-				namespace.unlockAncestors(&gfs.PathInfo{
-					Pathname: parent.Pathname[:index], IsDir: true,
-				})
+				cleanup()
 				return err
 			}
+		} else if file, ok := dir.Files[subtask.Name]; ok {
+			if len(subtask.Subtasks) == 0 { // the last segment
+				if subtask.readOnly {
+					file.RLock()
+				} else {
+					file.Lock()
+				}
+			} else { // not the last segment
+				cleanup()
+				return errors.New(fmt.Sprintf("file %s is not a directory", subtask.Name))
+			}
+		} else { // the file or directory does not exist
+			cleanup()
+			return errors.New(fmt.Sprintf("file or directory %s does not exist", subtask.Name))
 		}
 	}
 	return nil
 }
 
-// unlockAncestors unlocks all ancestors of a path
-// The operation is done hierarchically from the root to the leaf.
-// Note: this method is not concurrency-safe.
-func (namespace *NamespaceMetadata) unlockAncestors(pathInfo *gfs.PathInfo) {
-	parent, err := pathInfo.Parent()
-	if err != nil {
-		return
+// unlockWithLockTask unlocks the file or directory
+// The function returns the last error that occurs during the unlocking process
+// if exists.
+func (dir *DirectoryInfo) unlockWithLockTask(task *LockTask) error {
+	if task == nil {
+		return nil
 	}
-	for index := range parent.Pathname {
-		if index != 0 && parent.Pathname[index] == '/' {
-			err = namespace.unlockFileOrDirectory(parent.Pathname[:index], true)
-			if err != nil {
-				log.Println(err)
+
+	// unlock itself
+	if task.readOnly {
+		dir.RUnlock()
+	} else {
+		dir.Unlock()
+	}
+
+	// traverse through the subtasks
+	var err error = nil
+	for _, subtask := range task.Subtasks {
+		if subdirectory, ok := dir.Directories[subtask.Name]; ok {
+			newError := subdirectory.unlockWithLockTask(subtask)
+			if newError != nil {
+				err = newError
 			}
+		} else if file, ok := dir.Files[subtask.Name]; ok {
+			if len(subtask.Subtasks) == 0 { // the last segment
+				if subtask.readOnly {
+					file.RUnlock()
+				} else {
+					file.Unlock()
+				}
+			} else { // not the last segment
+				err = errors.New(fmt.Sprintf("file %s is not a directory", subtask.Name))
+			}
+		} else { // the file or directory does not exist
+			err = errors.New(fmt.Sprintf("file or directory %s does not exist", subtask.Name))
 		}
+
+	}
+	return err
+}
+
+func (dir *DirectoryInfo) unlockFileOrDirectory(segments []string, readOnly bool) error {
+	if len(segments) == 0 {
+		if readOnly {
+			dir.RUnlock()
+		} else {
+			dir.Unlock()
+		}
+		return nil
+	}
+	dir.RUnlock()
+	if subdirectory, ok := dir.Directories[segments[0]]; ok {
+		return subdirectory.unlockFileOrDirectory(segments[1:], readOnly)
+	} else if file, ok := dir.Files[segments[0]]; ok {
+		if len(segments) == 1 { // the last segment
+			if readOnly {
+				file.RUnlock()
+			} else {
+				file.Unlock()
+			}
+			return nil
+		} else { // not the last segment
+			return errors.New(fmt.Sprintf("file %s is not a directory", segments[0]))
+		}
+	} else { // the file or directory does not exist
+		return errors.New(fmt.Sprintf("file or directory %s does not exist", segments[0]))
 	}
 }
 
-func (namespace *NamespaceMetadata) addDirectoryIfNotExists(pathname string) {
-	if _, ok := namespace.Directories[pathname]; !ok {
-		namespace.Directories[pathname] = DirectoryInfo{
-			Files:       map[string]struct{}{},
-			Directories: map[string]struct{}{},
-		}
-		namespace.Locks[pathname] = sync.RWMutex{}
-	}
+// LockFileOrDirectory locks the file or directory
+func (namespace *NamespaceMetadata) LockFileOrDirectory(pathname string, readOnly bool) error {
+	return namespace.Root.lockFileOrDirectory(utils.ParsePath(pathname), readOnly)
 }
 
-func (namespace *NamespaceMetadata) addAllParentDirectoriesIfNotExists(pathname string) {
-	parent, err := (&gfs.PathInfo{Pathname: pathname, IsDir: false}).Parent()
-	if err != nil {
-		return // the case that the file is in the root directory
+// UnlockFileOrDirectory unlocks the file or directory
+func (namespace *NamespaceMetadata) UnlockFileOrDirectory(pathname string, readOnly bool) error {
+	return namespace.Root.unlockFileOrDirectory(utils.ParsePath(pathname), readOnly)
+}
+
+func (dir *DirectoryInfo) addDirectoryIfNotExists(segment []string) {
+	dir.Lock()
+	subDir, ok := dir.Directories[segment[0]]
+	if ok {
+		subDir.addDirectoryIfNotExists(segment[1:])
+	} else {
+		dir.Directories[segment[0]] = &DirectoryInfo{
+			Parent:      dir,
+			Files:       map[string]*FileMetadata{},
+			Directories: map[string]*DirectoryInfo{},
+		}
+		dir.Directories[segment[0]].addDirectoryIfNotExists(segment[1:])
 	}
-	for index := range parent.Pathname {
-		if index != 0 && parent.Pathname[index] == '/' {
-			namespace.addDirectoryIfNotExists(parent.Pathname[:index])
+	dir.Unlock()
+}
+
+// addDirectoriesIfNotExists adds all parent directories of the file or directory
+func (namespace *NamespaceMetadata) addDirectoriesIfNotExists(pathname string) {
+	namespace.Root.addDirectoryIfNotExists(utils.ParsePath(pathname))
+}
+
+func (dir *DirectoryInfo) addFile(directories []string, filename string) error {
+	dir.Lock()
+	defer dir.Unlock()
+	if len(directories) == 0 { // the final directory
+		if _, ok := dir.Files[filename]; ok {
+			return errors.New(fmt.Sprintf("file %s already exists", filename))
+		}
+		if _, ok := dir.Directories[filename]; ok {
+			return errors.New(fmt.Sprintf("%s is a directory", filename))
+		}
+		dir.Files[filename] = &FileMetadata{Chunks: []gfs.ChunkHandle{}}
+		return nil
+	}
+	if _, ok := dir.Files[directories[0]]; ok {
+		return errors.New(fmt.Sprintf("%s is a file", directories[0]))
+	}
+	if _, ok := dir.Directories[directories[0]]; !ok {
+		dir.Directories[directories[0]] = &DirectoryInfo{
+			Parent:      dir,
+			Files:       map[string]*FileMetadata{},
+			Directories: map[string]*DirectoryInfo{},
 		}
 	}
+	err := dir.Directories[directories[0]].addFile(directories[1:], filename)
+	return err
 }
 
 // addFile adds a file to the namespace
-// The parent directories must exist. A suggested way is to lock the namespace
-// first, add all parent directories, and lock these directories before adding
-// the file.
-// Note: this method is not concurrency-safe, the caller should hold the write
-// lock of the namespace.
+// The function will create all parent directories if they do not exist.
 func (namespace *NamespaceMetadata) addFile(pathname string) error {
-	if _, ok := namespace.Files[pathname]; ok {
-		return errors.New(fmt.Sprintf("file %s already exists", pathname))
-	}
-	namespace.Files[pathname] = FileMetadata{Chunks: []gfs.ChunkHandle{}}
-	namespace.Locks[pathname] = sync.RWMutex{}
-	return nil
-}
-
-// tryRemoveParentsWhenRemoved tries to remove all empty parent directories
-// when a file or directory is removed. The operation is done recursively.
-// Note: this method is not concurrency-safe, the caller should hold the write
-// lock of the namespace.
-func (namespace *NamespaceMetadata) tryRemoveParentsWhenRemoved(pathname string) {
-	parent, err := (&gfs.PathInfo{Pathname: pathname, IsDir: false}).Parent()
-	if err != nil {
-		return // the case in the root directory
-	}
-	if len(namespace.Directories[parent.Pathname].Files) == 0 &&
-		len(namespace.Directories[parent.Pathname].Directories) == 0 {
-		delete(namespace.Directories, parent.Pathname)
-		delete(namespace.Locks, parent.Pathname)
-	}
-	namespace.tryRemoveParentsWhenRemoved(parent.Pathname)
+	segment := utils.ParsePath(pathname)
+	return namespace.Root.addFile(segment[:len(segment)-1], segment[len(segment)-1])
 }
 
 // deleteFile deletes a file from the namespace
 // The file should have no chunks. A suggested way is to remove all chunks
 // first, and then delete the file.
-// Note: this method is not concurrency-safe, the caller should hold the write
-// lock of the namespace.
 func (namespace *NamespaceMetadata) deleteFile(pathname string) error {
-	if _, ok := namespace.Files[pathname]; !ok {
+	parent, err := utils.Parent(pathname)
+	if err != nil {
+		return err
+	}
+	parentDir, err := namespace.lockAndGetDirectory(parent, false)
+	if err != nil {
+		return err
+	}
+	if file, ok := parentDir.Files[utils.LastSegment(pathname)]; ok {
+		file.Lock()
+		if len(file.Chunks) != 0 {
+			_ = namespace.UnlockFileOrDirectory(parent, false)
+			file.Unlock()
+			return errors.New(fmt.Sprintf("file %s still has chunks", pathname))
+		}
+		file.Unlock()
+		delete(parentDir.Files, utils.LastSegment(pathname))
+		_ = namespace.UnlockFileOrDirectory(parent, false)
+		return nil
+	} else {
+		_ = namespace.UnlockFileOrDirectory(parent, false)
 		return errors.New(fmt.Sprintf("file %s does not exist", pathname))
 	}
-	if len(namespace.Files[pathname].Chunks) != 0 {
-		return errors.New(fmt.Sprintf("file %s still has chunks", pathname))
-	}
-	delete(namespace.Files, pathname)
-	delete(namespace.Locks, pathname)
-	namespace.tryRemoveParentsWhenRemoved(pathname)
-	return nil
 }
 
 // moveFile moves a file from oldPathname to newPathname
-// Note: this method is not concurrency-safe, the caller should hold the write
-// lock of the namespace.
 func (namespace *NamespaceMetadata) moveFile(oldPathname, newPathname string) error {
-	if _, ok := namespace.Files[oldPathname]; !ok {
-		return errors.New(fmt.Sprintf("source file %s does not exist", oldPathname))
+	newParent, err := utils.Parent(newPathname)
+	if err != nil {
+		return err
 	}
-	if _, ok := namespace.Files[newPathname]; ok {
-		return errors.New(fmt.Sprintf("target file %s already exists", newPathname))
+	oldParent, err := utils.Parent(oldPathname)
+	if err != nil {
+		return err
 	}
-	chunks := namespace.Files[oldPathname].Chunks
-	delete(namespace.Files, oldPathname)
-	delete(namespace.Locks, oldPathname)
-	namespace.Files[newPathname] = FileMetadata{Chunks: chunks}
-	namespace.Locks[newPathname] = sync.RWMutex{}
-	namespace.tryRemoveParentsWhenRemoved(oldPathname)
+	newSegment := utils.ParsePath(newParent)
+	oldSegment := utils.ParsePath(oldParent)
+	newLockTask := MakeLockTaskFromStringSlice(newSegment, false)
+	oldLockTask := MakeLockTaskFromStringSlice(oldSegment, false)
+	task, err := Merge(newLockTask, oldLockTask)
+	if err != nil {
+		return err
+	}
+	err = namespace.Root.lockWithLockTask(task)
+	if err != nil {
+		return err
+	}
+	newParentDir, err := namespace.getDirectory(newParent)
+	if err != nil {
+		return err
+	}
+	oldParentDir, err := namespace.getDirectory(oldParent)
+	if err != nil {
+		return err
+	}
+	newFileName := utils.LastSegment(newPathname)
+	oldFileName := utils.LastSegment(oldPathname)
+	if _, ok := newParentDir.Files[newFileName]; ok {
+		_ = namespace.Root.unlockWithLockTask(task)
+		return errors.New(fmt.Sprintf("file %s already exists", newPathname))
+	}
+	if _, ok := newParentDir.Directories[newFileName]; ok {
+		_ = namespace.Root.unlockWithLockTask(task)
+		return errors.New(fmt.Sprintf("%s is a directory", newPathname))
+	}
+	if _, ok := oldParentDir.Files[oldFileName]; !ok {
+		_ = namespace.Root.unlockWithLockTask(task)
+		return errors.New(fmt.Sprintf("file %s does not exist", oldPathname))
+	}
+	newParentDir.Files[newFileName] = oldParentDir.Files[oldFileName]
+	delete(oldParentDir.Files, oldFileName)
+	_ = namespace.Root.unlockWithLockTask(task)
 	return nil
 }
 
