@@ -58,6 +58,9 @@ func (namespace *NamespaceMetadata) exists(pathname string) bool {
 	return true
 }
 
+// getDirectory returns the directory metadata of the directory
+// Note: this method is not concurrency-safe, the caller should hold the read
+// lock of all its parent directories.
 func (namespace *NamespaceMetadata) getDirectory(pathname string) (*DirectoryInfo, error) {
 	segments := utils.ParsePath(pathname)
 	current := namespace.Root
@@ -71,6 +74,7 @@ func (namespace *NamespaceMetadata) getDirectory(pathname string) (*DirectoryInf
 	return current, nil
 }
 
+// lockAndGetDirectory locks and returns the directory metadata of the directory
 func (namespace *NamespaceMetadata) lockAndGetDirectory(
 	pathname string,
 	readOnly bool,
@@ -104,6 +108,23 @@ func (namespace *NamespaceMetadata) getFile(pathname string) (*FileMetadata, err
 	} else {
 		return nil, errors.New(fmt.Sprintf("file %s does not exist", pathname))
 	}
+}
+
+// lockAndGetFile locks and returns the file metadata of the file
+func (namespace *NamespaceMetadata) lockAndGetFile(
+	pathname string,
+	readOnly bool,
+) (*FileMetadata, error) {
+	err := namespace.LockFileOrDirectory(pathname, readOnly)
+	if err != nil {
+		return nil, err
+	}
+	file, err := namespace.getFile(pathname)
+	if err != nil {
+		_ = namespace.UnlockFileOrDirectory(pathname, readOnly)
+		return nil, err
+	}
+	return file, nil
 }
 
 func (dir *DirectoryInfo) lockFileOrDirectory(segments []string, readOnly bool) error {
@@ -408,4 +429,20 @@ func (chunkMeta *ChunkMetadata) addChunkserver(server gfs.ServerInfo) {
 	chunkMeta.Lock()
 	defer chunkMeta.Unlock()
 	chunkMeta.Servers[server] = true
+}
+
+func (master *Master) reduceChunkRef(chunk gfs.ChunkHandle) error {
+	master.chunksLock.Lock()
+	defer master.chunksLock.Unlock()
+	chunkMeta, ok := master.chunks[chunk]
+	if !ok {
+		return errors.New(fmt.Sprintf("chunk %d does not exist", chunk))
+	}
+	chunkMeta.Lock()
+	defer chunkMeta.Unlock()
+	chunkMeta.RefCount--
+	if chunkMeta.RefCount == 0 {
+		delete(master.chunks, chunk)
+	}
+	return nil
 }
