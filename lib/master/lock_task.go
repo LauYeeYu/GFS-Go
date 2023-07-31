@@ -65,9 +65,9 @@ func MakeLockTaskFromStringSlice(names []string, readOnly bool) *LockTask {
 	}
 }
 
-// Merge merges two lock tasks into one. If the two lock tasks have different
+// MergeLockTasks merges two lock tasks into one. If the two lock tasks have different
 // names, an error is returned.
-func Merge(task1, task2 *LockTask) (*LockTask, error) {
+func MergeLockTasks(task1, task2 *LockTask) (*LockTask, error) {
 	if task1 == nil {
 		return task2, nil
 	}
@@ -88,7 +88,7 @@ func Merge(task1, task2 *LockTask) (*LockTask, error) {
 		if subtask1 == nil {
 			_, _ = task1.Insert(subtask2)
 		} else {
-			_, err := Merge(subtask1, subtask2)
+			_, err := MergeLockTasks(subtask1, subtask2)
 			if err != nil {
 				return nil, err
 			}

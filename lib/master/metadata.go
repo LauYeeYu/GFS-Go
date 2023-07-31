@@ -383,7 +383,7 @@ func (namespace *NamespaceMetadata) moveFile(oldPathname, newPathname string) er
 	oldSegment := utils.ParsePath(oldParent)
 	newLockTask := MakeLockTaskFromStringSlice(newSegment, false)
 	oldLockTask := MakeLockTaskFromStringSlice(oldSegment, false)
-	task, err := Merge(newLockTask, oldLockTask)
+	task, err := MergeLockTasks(newLockTask, oldLockTask)
 	if err != nil {
 		return err
 	}
