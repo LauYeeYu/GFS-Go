@@ -419,6 +419,38 @@ func (namespace *NamespaceMetadata) moveFile(oldPathname, newPathname string) er
 	return nil
 }
 
+// snapshot copies the content of sourceDir to dir
+// The destination directory should be empty.
+// Note: this function does not lock the destination directory.
+func (dir *DirectoryInfo) snapshot(master *Master, sourceDir *DirectoryInfo) error {
+	if len(dir.Files) != 0 || len(dir.Directories) != 0 {
+		return errors.New("destination directory is not empty")
+	}
+	for filename, file := range sourceDir.Files {
+		dir.Files[filename] = master.makeFileCopy(file)
+	}
+	for dirname, subdir := range sourceDir.Directories {
+		dir.Directories[dirname] = &DirectoryInfo{
+			Parent:      dir,
+			Files:       map[string]*FileMetadata{},
+			Directories: map[string]*DirectoryInfo{},
+		}
+		_ = dir.Directories[dirname].snapshot(master, subdir)
+	}
+	return nil
+}
+
+func (master *Master) makeFileCopy(file *FileMetadata) *FileMetadata {
+	master.chunksLock.Lock()
+	for _, chunk := range file.Chunks {
+		master.chunks[chunk].RefCount++
+	}
+	master.chunksLock.Unlock()
+	return &FileMetadata{
+		Chunks: file.Chunks,
+	}
+}
+
 func (chunkMeta *ChunkMetadata) removeChunkserver(server gfs.ServerInfo) {
 	chunkMeta.Lock()
 	defer chunkMeta.Unlock()
