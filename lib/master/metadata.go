@@ -306,6 +306,35 @@ func (namespace *NamespaceMetadata) addDirectoriesIfNotExists(pathname string) {
 	namespace.Root.addDirectoryIfNotExists(utils.ParsePath(pathname))
 }
 
+func (dir *DirectoryInfo) makeDirectoryIfNotExists(directories []string) error {
+	if len(directories) == 0 {
+		return nil
+	}
+	dir.Lock()
+	if subDir, ok := dir.Directories[directories[0]]; ok {
+		err := subDir.makeDirectoryIfNotExists(directories[1:])
+		dir.Unlock()
+		return err
+	} else if _, ok := dir.Files[directories[0]]; ok {
+		dir.Unlock()
+		return errors.New(fmt.Sprintf("%s is a file", directories[0]))
+	} else {
+		dir.Directories[directories[0]] = &DirectoryInfo{
+			Parent:      dir,
+			Files:       map[string]*FileMetadata{},
+			Directories: map[string]*DirectoryInfo{},
+		}
+		err := dir.Directories[directories[0]].makeDirectoryIfNotExists(directories[1:])
+		if err != nil {
+			delete(dir.Directories, directories[0])
+			dir.Unlock()
+			return nil
+		}
+		dir.Unlock()
+		return nil
+	}
+}
+
 func (dir *DirectoryInfo) addFile(directories []string, filename string) error {
 	dir.Lock()
 	defer dir.Unlock()
