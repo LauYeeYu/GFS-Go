@@ -18,6 +18,8 @@ type Master struct {
 	namespacesLock   sync.RWMutex
 	chunks           map[gfs.ChunkHandle]*ChunkMetadata
 	chunksLock       sync.RWMutex
+	nextChunkHandle  gfs.ChunkHandle
+	nextChunkLock    sync.Mutex
 	chunkservers     map[gfs.ServerInfo]struct{}
 	chunkserversLock sync.RWMutex
 
@@ -26,6 +28,14 @@ type Master struct {
 
 	// shutdown
 	shutdown chan struct{}
+}
+
+func (master *Master) getNextChunkHandle() gfs.ChunkHandle {
+	master.nextChunkLock.Lock()
+	defer master.nextChunkLock.Unlock()
+	handle := master.nextChunkHandle
+	master.nextChunkHandle++
+	return handle
 }
 
 // MakeMaster creates a new Master instance
