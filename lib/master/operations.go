@@ -1,7 +1,9 @@
 package master
 
 import (
+	"errors"
 	"gfs"
+	"gfs/utils"
 	"time"
 )
 
@@ -12,9 +14,6 @@ const (
 	MoveFileOperation
 	SnapshotOperation
 	AddChunkToFile
-
-	// For chunks
-	AddChunkOperation
 
 	// For leases
 	GrantLeaseOperation
@@ -27,7 +26,7 @@ type OperationLogEntryHeader struct {
 }
 
 type LogEntry interface {
-	Execute() error
+	Execute(master *Master) error
 }
 
 type AddFileOperationLogEntry struct {
@@ -35,9 +34,14 @@ type AddFileOperationLogEntry struct {
 	Pathname  string
 }
 
-func (entry *AddFileOperationLogEntry) Execute() error {
-	//TODO
-	return nil
+func (entry *AddFileOperationLogEntry) Execute(master *Master) error {
+	master.namespacesLock.RLock()
+	namespaceMeta, exists := master.namespaces[entry.Namespace]
+	master.namespacesLock.RUnlock()
+	if !exists {
+		return errors.New("namespace not found")
+	}
+	return namespaceMeta.addFile(entry.Pathname)
 }
 
 type DeleteFileOperationLogEntry struct {
@@ -45,8 +49,33 @@ type DeleteFileOperationLogEntry struct {
 	Pathname  string
 }
 
-func (entry *DeleteFileOperationLogEntry) Execute() error {
-	//TODO
+func (entry *DeleteFileOperationLogEntry) Execute(master *Master) error {
+	master.namespacesLock.RLock()
+	namespaceMeta, exists := master.namespaces[entry.Namespace]
+	master.namespacesLock.RUnlock()
+	if !exists {
+		return errors.New("namespace not found")
+	}
+	parent, err := utils.Parent(entry.Pathname)
+	if err != nil {
+		return err
+	}
+	dir, err := namespaceMeta.lockAndGetDirectory(parent, false)
+	if err != nil {
+		return err
+	}
+	fileMeta, exists := dir.Files[entry.Pathname]
+	if !exists {
+		_ = namespaceMeta.UnlockFileOrDirectory(parent, false)
+		return errors.New("file not found")
+	}
+	fileMeta.Lock()
+	for _, chunk := range fileMeta.Chunks {
+		_ = master.reduceChunkRef(chunk)
+	}
+	fileMeta.Chunks = []gfs.ChunkHandle{}
+	fileMeta.Unlock()
+	delete(dir.Files, entry.Pathname)
 	return nil
 }
 
@@ -56,9 +85,14 @@ type MoveFileOperationLogEntry struct {
 	Destination string
 }
 
-func (entry *MoveFileOperationLogEntry) Execute() error {
-	//TODO
-	return nil
+func (entry *MoveFileOperationLogEntry) Execute(master *Master) error {
+	master.namespacesLock.RLock()
+	namespaceMeta, exists := master.namespaces[entry.Namespace]
+	master.namespacesLock.RUnlock()
+	if !exists {
+		return errors.New("namespace not found")
+	}
+	return namespaceMeta.moveFile(entry.Source, entry.Destination)
 }
 
 type SnapshotOperationLogEntry struct {
@@ -67,9 +101,41 @@ type SnapshotOperationLogEntry struct {
 	Destination string
 }
 
-func (entry *SnapshotOperationLogEntry) Execute() error {
-	//TODO
-	return nil
+func (entry *SnapshotOperationLogEntry) Execute(master *Master) error {
+	master.namespacesLock.RLock()
+	namespaceMeta, exists := master.namespaces[entry.Namespace]
+	master.namespacesLock.RUnlock()
+	if !exists {
+		return errors.New("namespace not found")
+	}
+	err := namespaceMeta.Root.makeDirectoryIfNotExists(utils.ParsePath(entry.Destination))
+	if err != nil {
+		return err
+	}
+	newLockPlan := MakeLockTaskFromStringSlice(utils.ParsePath(entry.Destination), false)
+	oldLockPlan := MakeLockTaskFromStringSlice(utils.ParsePath(entry.Source), true)
+	if newLockPlan == nil || oldLockPlan == nil {
+		return errors.New("invalid snapshot path")
+	}
+	lockPlan, err := MergeLockTasks(newLockPlan, oldLockPlan)
+	if err != nil {
+		return err
+	}
+	err = namespaceMeta.Root.lockWithLockTask(lockPlan)
+	if err != nil {
+		return err
+	}
+
+	// snapshot
+	destDir, err := namespaceMeta.getDirectory(entry.Destination)
+	if err != nil {
+		return err
+	}
+	srcDir, err := namespaceMeta.getDirectory(entry.Source)
+	if err != nil {
+		return err
+	}
+	return destDir.snapshot(master, srcDir)
 }
 
 type AddChunkToFileOperationLogEntry struct {
@@ -78,17 +144,38 @@ type AddChunkToFileOperationLogEntry struct {
 	Chunk     gfs.ChunkHandle
 }
 
-func (entry *AddChunkToFileOperationLogEntry) Execute() error {
-	//TODO
-	return nil
-}
-
-type AddChunkOperationLogEntry struct {
-	Chunk gfs.ChunkHandle
-}
-
-func (entry *AddChunkOperationLogEntry) Execute() error {
-	//TODO
+func (entry *AddChunkToFileOperationLogEntry) Execute(master *Master) error {
+	master.namespacesLock.RLock()
+	namespaceMeta, exists := master.namespaces[entry.Namespace]
+	master.namespacesLock.RUnlock()
+	if !exists {
+		return errors.New("namespace not found")
+	}
+	fileMeta, err := namespaceMeta.lockAndGetFile(entry.Pathname, false)
+	if err != nil {
+		return err
+	}
+	fileMeta.Chunks = append(fileMeta.Chunks, entry.Chunk)
+	master.chunksLock.Lock()
+	chunk, ok := master.chunks[entry.Chunk]
+	if !ok {
+		// FIXME: servers should be the servers that have the chunk
+		var servers []gfs.ServerInfo
+		serverMap := make(map[gfs.ServerInfo]bool)
+		for _, server := range servers {
+			serverMap[server] = true
+		}
+		master.chunksLock.Lock()
+		master.chunks[entry.Chunk] = &ChunkMetadata{
+			Version:     0,
+			RefCount:    1,
+			LeaseHolder: nil,
+			LeaseExpire: time.Now(),
+			Servers:     serverMap,
+		}
+	} else {
+		chunk.RefCount++
+	}
 	return nil
 }
 
@@ -98,7 +185,7 @@ type GrantLeaseOperationLogEntry struct {
 	LeaseExpire time.Time
 }
 
-func (entry *GrantLeaseOperationLogEntry) Execute() error {
+func (entry *GrantLeaseOperationLogEntry) Execute(master *Master) error {
 	//TODO
 	return nil
 }
@@ -107,7 +194,7 @@ type RevokeLeaseOperationLogEntry struct {
 	Chunk gfs.ChunkHandle
 }
 
-func (entry *RevokeLeaseOperationLogEntry) Execute() error {
+func (entry *RevokeLeaseOperationLogEntry) Execute(master *Master) error {
 	//TODO
 	return nil
 }
