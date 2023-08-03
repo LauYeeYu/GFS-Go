@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"gfs"
+	"gfs/utils"
 	"log"
 	"os"
 	"strconv"
@@ -16,6 +17,16 @@ type Chunk struct {
 	chunkFile *os.File // stored in $storageDir/chunks/$handle
 	checksum  Checksum // stored in $storageDir/chunks/$handle.checksum
 	sync.RWMutex
+}
+
+func chunkFilePath(handle gfs.ChunkHandle, chunkserver *Chunkserver) string {
+	return utils.MergePath(chunkserver.chunksDir, fmt.Sprintf("%d", handle))
+}
+func chunkVersionFilePath(handle gfs.ChunkHandle, chunkserver *Chunkserver) string {
+	return utils.MergePath(chunkserver.chunksDir, fmt.Sprintf("%d.version", handle))
+}
+func chunkChecksumFilePath(handle gfs.ChunkHandle, chunkserver *Chunkserver) string {
+	return utils.MergePath(chunkserver.chunksDir, fmt.Sprintf("%d.checksum", handle))
 }
 
 // length returns the length of the chunk file
@@ -42,7 +53,7 @@ func LoadChunkMetadata(
 	chunkserver *Chunkserver,
 ) *Chunk {
 	// Get the version
-	versionFile, err := os.Open(chunkserver.chunksDir + "/" + handle.String() + ".version")
+	versionFile, err := os.Open(chunkVersionFilePath(handle, chunkserver))
 	if err != nil {
 		log.Println("Fail to open version file:", err.Error())
 		return nil
@@ -54,7 +65,7 @@ func LoadChunkMetadata(
 	}
 
 	// Get the checksum
-	checksumFile, err := os.Open(chunkserver.chunksDir + "/" + handle.String() + ".checksum")
+	checksumFile, err := os.Open(chunkChecksumFilePath(handle, chunkserver))
 	if err != nil {
 		log.Println("Fail to open version file:", err.Error())
 		return nil
@@ -67,7 +78,7 @@ func LoadChunkMetadata(
 	}
 
 	// Get the chunk file
-	chunkFile, err := os.Open(chunkserver.chunksDir + "/" + handle.String())
+	chunkFile, err := os.Open(chunkFilePath(handle, chunkserver))
 	if err != nil {
 		log.Println("Fail to open chunk file:", err.Error())
 		return nil
@@ -97,9 +108,9 @@ func LoadChunkMetadata(
 func (chunk *Chunk) removeChunk(chunkserver *Chunkserver) {
 	chunkserver.chunksLock.Lock()
 	defer chunkserver.chunksLock.Unlock()
-	_ = os.Remove(chunkserver.chunksDir + "/" + chunk.handle.String())
-	_ = os.Remove(chunkserver.chunksDir + "/" + chunk.handle.String() + ".version")
-	_ = os.Remove(chunkserver.chunksDir + "/" + chunk.handle.String() + ".checksum")
+	_ = os.Remove(chunkFilePath(chunk.handle, chunkserver))
+	_ = os.Remove(chunkVersionFilePath(chunk.handle, chunkserver))
+	_ = os.Remove(chunkChecksumFilePath(chunk.handle, chunkserver))
 }
 
 // rangedRead reads data from the chunk at the given offset.

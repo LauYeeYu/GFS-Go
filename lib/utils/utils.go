@@ -45,3 +45,11 @@ func LastSegment(pathname string) string {
 	}
 	return pathname[i+1:]
 }
+
+func MergePath(parent string, child string) string {
+	if strings.HasSuffix(parent, "/") {
+		return parent + child
+	} else {
+		return parent + "/" + child
+	}
+}
