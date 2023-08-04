@@ -46,6 +46,41 @@ both locally and remotely.
 The operation log must be written before it applies the log to its in-memory
 state.
 
+### Implementation
+
+Log records are stored in a specific directory. Each log record is stored in
+a separate file. The file name is `<index>.log`. Every log file has a header
+and a log entry. The header contains the time, the log type and whether the
+operation is successful or not. The log entry contains minimal information
+to reconstruct the operation. The table below lists the specification for
+things of operation logs.
+
+| Pathname                               | Usage                                       |
+|----------------------------------------|---------------------------------------------|
+| `log/`                                 | Store log files                             |
+| `log/last_log_index`                   | Store the index of the last log file        |
+| `log/<index>.log`                      | Log file                                    |
+| `checkpoints/`                         | Store checkpoint files                      |
+| `checkpoints/last_checkpoint_index`    | Store the index of the last checkpoint file |
+| `compressed_log/`                      | Store compressed log files                  |
+| `compressed_log/<start>-<end>.tar.ztd` | Store the logs from `start` to `end`        |
+
+When a log comes in,
+1. The corresponding log file will be written to disk;
+2. The `last_log_index` will be updated to the index of the log file;
+3. The operation will be applied to the in-memory state.
+
+When there are already 100 log files after last checkpoint, the master will
+start a checkpoint procedure. During that procedure,
+1. the master will load a latest available checkpoint;
+2. then apply 100 log files to the in-memory state;
+3. after that, the master will write the in-memory state to a new checkpoint;
+4. the master updates the `last_checkpoint_index` to the index of the new
+   checkpoint;
+
+When the master starts up, it will read all the log files in the log directory
+and apply them to the in-memory state.
+
 ## Lease Management
 
 The master needs to grant a lease to one of the replicas, which is called
