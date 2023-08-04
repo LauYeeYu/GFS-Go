@@ -59,6 +59,9 @@ func MakeMaster(server gfs.ServerInfo, storageDir string) *Master {
 		chunks:       make(map[gfs.ChunkHandle]*ChunkMetadata),
 		chunkservers: make(map[gfs.ServerInfo]struct{}),
 
+		nextChunkHandle: 0,
+		nextLogIndex:    0,
+
 		shutdown: make(chan struct{}),
 	}
 }
