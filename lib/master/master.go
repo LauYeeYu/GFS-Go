@@ -3,6 +3,7 @@ package master
 import (
 	"errors"
 	"gfs"
+	"gfs/utils"
 	"log"
 	"net"
 	"net/rpc"
@@ -11,8 +12,11 @@ import (
 )
 
 type Master struct {
-	server     gfs.ServerInfo
-	storageDir string // Path for storing metadata
+	server           gfs.ServerInfo
+	storageDir       string // Path for storing metadata
+	logDir           string // Path for storing operation logs
+	compressedLogDir string // Path for storing compressed operation logs
+	checkpointDir    string // Path for storing checkpoints
 
 	namespaces       map[gfs.Namespace]*NamespaceMetadata
 	namespacesLock   sync.RWMutex
@@ -22,6 +26,10 @@ type Master struct {
 	nextChunkLock    sync.Mutex
 	chunkservers     map[gfs.ServerInfo]struct{}
 	chunkserversLock sync.RWMutex
+
+	// Operation logs
+	nextLogIndex     int64
+	operationLogLock sync.Mutex // make sure that only one operation log is written at a time
 
 	// RPC
 	listener net.Listener
@@ -41,8 +49,11 @@ func (master *Master) getNextChunkHandle() gfs.ChunkHandle {
 // MakeMaster creates a new Master instance
 func MakeMaster(server gfs.ServerInfo, storageDir string) *Master {
 	return &Master{
-		server:     server,
-		storageDir: storageDir,
+		server:           server,
+		storageDir:       storageDir,
+		logDir:           utils.MergePath(storageDir, "log"),
+		compressedLogDir: utils.MergePath(storageDir, "compressed_log"),
+		checkpointDir:    utils.MergePath(storageDir, "checkpoints"),
 
 		namespaces:   make(map[gfs.Namespace]*NamespaceMetadata),
 		chunks:       make(map[gfs.ChunkHandle]*ChunkMetadata),

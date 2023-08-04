@@ -1,9 +1,12 @@
 package master
 
 import (
+	"encoding/gob"
 	"errors"
+	"fmt"
 	"gfs"
 	"gfs/utils"
+	"os"
 	"time"
 )
 
@@ -25,8 +28,64 @@ type OperationLogEntryHeader struct {
 	Operation int
 }
 
+func NewOperationLogEntryHeader(operation int) *OperationLogEntryHeader {
+	return &OperationLogEntryHeader{
+		Time:      time.Now(),
+		Operation: operation,
+	}
+}
+
 type LogEntry interface {
 	Execute(master *Master) error
+}
+
+func (master *Master) appendLog(log OperationLogEntryHeader, entry LogEntry) error {
+	master.operationLogLock.Lock()
+	logIndex := master.nextLogIndex
+	master.nextLogIndex++
+	err := master.writeLog(logIndex, log, entry)
+	master.operationLogLock.Unlock()
+	if err != nil {
+		return err
+	}
+	return entry.Execute(master)
+}
+
+func (master *Master) writeLog(logIndex int64, log OperationLogEntryHeader, entry LogEntry) error {
+	fileName := utils.MergePath(master.logDir, fmt.Sprintf("%d.log", logIndex))
+	file, err := os.OpenFile(fileName, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	_, err = file.Seek(0, 0)
+	if err != nil {
+		_ = file.Close()
+		return err
+	}
+	encoder := gob.NewEncoder(file)
+	err = encoder.Encode(log)
+	if err != nil {
+		_ = file.Close()
+		return err
+	}
+	err = encoder.Encode(entry)
+	if err != nil {
+		_ = file.Close()
+		return err
+	}
+	_ = file.Close()
+	indexFileName := utils.MergePath(master.logDir, "index")
+	indexFile, err := os.OpenFile(indexFileName, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	_, err = indexFile.Seek(0, 0)
+	if err != nil {
+		_ = indexFile.Close()
+		return err
+	}
+	_, err = fmt.Fprintf(indexFile, "%d\n", logIndex)
+	return nil
 }
 
 type AddFileOperationLogEntry struct {
