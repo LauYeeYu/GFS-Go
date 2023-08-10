@@ -44,10 +44,12 @@ func (master *Master) appendLog(log OperationLogEntryHeader, entry LogEntry) err
 	logIndex := master.nextLogIndex
 	master.nextLogIndex++
 	err := master.writeLog(logIndex, log, entry)
-	master.operationLogLock.Unlock()
 	if err != nil {
+		master.nextLogIndex--
+		master.operationLogLock.Unlock()
 		return err
 	}
+	master.operationLogLock.Unlock()
 	return entry.Execute(master)
 }
 
