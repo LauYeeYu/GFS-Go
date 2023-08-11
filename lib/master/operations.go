@@ -59,8 +59,10 @@ func (master *Master) writeLog(logIndex int64, log OperationLogEntryHeader, entr
 	if err != nil {
 		return err
 	}
-	_, err = file.Seek(0, 0)
-	if err != nil {
+	if file.Truncate(0) != nil {
+		return err
+	}
+	if _, err = file.Seek(0, 0); err != nil {
 		_ = file.Close()
 		return err
 	}
@@ -76,18 +78,8 @@ func (master *Master) writeLog(logIndex int64, log OperationLogEntryHeader, entr
 		return err
 	}
 	_ = file.Close()
-	indexFileName := utils.MergePath(master.logDir, "index")
-	indexFile, err := os.OpenFile(indexFileName, os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
-	}
-	_, err = indexFile.Seek(0, 0)
-	if err != nil {
-		_ = indexFile.Close()
-		return err
-	}
-	_, err = fmt.Fprintf(indexFile, "%d\n", logIndex)
-	return nil
+	// Update the index file
+	return utils.WriteTextInt64ToFile(utils.MergePath(master.logDir, "index"), logIndex)
 }
 
 type AddFileOperationLogEntry struct {
