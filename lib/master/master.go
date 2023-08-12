@@ -12,7 +12,8 @@ import (
 )
 
 type Master struct {
-	server           gfs.ServerInfo
+	server gfs.ServerInfo
+
 	storageDir       string // Path for storing metadata
 	logDir           string // Path for storing operation logs
 	compressedLogDir string // Path for storing compressed operation logs
@@ -28,22 +29,15 @@ type Master struct {
 	chunkserversLock sync.RWMutex
 
 	// Operation logs
-	nextLogIndex     int64
+	nextLogIndex     int64      // start from 1
 	operationLogLock sync.Mutex // make sure that only one operation log is written at a time
+	checkpointLock   sync.Mutex // make sure that only one checkpoint is written at a time
 
 	// RPC
 	listener net.Listener
 
 	// shutdown
 	shutdown chan struct{}
-}
-
-func (master *Master) getNextChunkHandle() gfs.ChunkHandle {
-	master.nextChunkLock.Lock()
-	defer master.nextChunkLock.Unlock()
-	handle := master.nextChunkHandle
-	master.nextChunkHandle++
-	return handle
 }
 
 // MakeMaster creates a new Master instance
@@ -60,7 +54,7 @@ func MakeMaster(server gfs.ServerInfo, storageDir string) *Master {
 		chunkservers: make(map[gfs.ServerInfo]struct{}),
 
 		nextChunkHandle: 0,
-		nextLogIndex:    0,
+		nextLogIndex:    1,
 
 		shutdown: make(chan struct{}),
 	}

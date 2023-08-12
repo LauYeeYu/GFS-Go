@@ -11,8 +11,9 @@ import (
 )
 
 const (
+	Invalid = iota
 	// For files
-	AddFileOperation = iota
+	AddFileOperation
 	DeleteFileOperation
 	MoveFileOperation
 	SnapshotOperation
@@ -80,6 +81,77 @@ func (master *Master) writeLog(logIndex int64, log OperationLogEntryHeader, entr
 	_ = file.Close()
 	// Update the index file
 	return utils.WriteTextInt64ToFile(utils.MergePath(master.logDir, "index"), logIndex)
+}
+
+// replayLog replays the log at logIndex
+// Return err if the log file cannot be retrieved. Execution errors will not
+// be regarded as errors.
+// Note: When calling this function, You can do nothing else on master
+func (master *Master) replayLog(logIndex int64) error {
+	fileName := utils.MergePath(master.logDir, fmt.Sprintf("%d.log", logIndex))
+	file, err := os.OpenFile(fileName, os.O_RDONLY, 0644)
+	if err != nil {
+		return err
+	}
+	if _, err = file.Seek(0, 0); err != nil {
+		_ = file.Close()
+		return err
+	}
+	decoder := gob.NewDecoder(file)
+	var header OperationLogEntryHeader
+	err = decoder.Decode(&header)
+	if err != nil {
+		return err
+	}
+	switch header.Operation {
+	case Invalid:
+		return errors.New("invalid operation")
+	case AddFileOperation:
+		var entry AddFileOperationLogEntry
+		if err = decoder.Decode(&entry); err != nil {
+			return err
+		}
+		_ = entry.Execute(master)
+	case DeleteFileOperation:
+		var entry DeleteFileOperationLogEntry
+		if err = decoder.Decode(&entry); err != nil {
+			return err
+		}
+		_ = entry.Execute(master)
+	case MoveFileOperation:
+		var entry MoveFileOperationLogEntry
+		if err = decoder.Decode(&entry); err != nil {
+			return err
+		}
+		_ = entry.Execute(master)
+	case SnapshotOperation:
+		var entry SnapshotOperationLogEntry
+		if err = decoder.Decode(&entry); err != nil {
+			return err
+		}
+		_ = entry.Execute(master)
+	case AddChunkToFile:
+		var entry AddChunkToFileOperationLogEntry
+		if err = decoder.Decode(&entry); err != nil {
+			return err
+		}
+		_ = entry.Execute(master)
+	case GrantLeaseOperation:
+		var entry GrantLeaseOperationLogEntry
+		if err = decoder.Decode(&entry); err != nil {
+			return err
+		}
+		_ = entry.Execute(master)
+	case RevokeLeaseOperation:
+		var entry RevokeLeaseOperationLogEntry
+		if err = decoder.Decode(&entry); err != nil {
+			return err
+		}
+		_ = entry.Execute(master)
+	default:
+		return errors.New("log type not found")
+	}
+	return nil
 }
 
 type AddFileOperationLogEntry struct {
