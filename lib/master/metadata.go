@@ -40,7 +40,7 @@ type ChunkMetadata struct {
 	sync.RWMutex
 	// Persistent data
 	Version     gfs.ChunkVersion
-	RefCount    int
+	RefCount    int64
 	LeaseHolder *gfs.ServerInfo
 	LeaseExpire time.Time
 
