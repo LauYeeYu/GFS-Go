@@ -62,6 +62,7 @@ things of operation logs.
 | `log/<index>.log`                      | Log file                                    |
 | `checkpoints/`                         | Store checkpoint files                      |
 | `checkpoints/last_checkpoint_index`    | Store the index of the last checkpoint file |
+| `checkpoints/<index>.checkpoint`       | Store the checkpoint from 1 to `index`      |
 | `compressed_log/`                      | Store compressed log files                  |
 | `compressed_log/<start>-<end>.tar.ztd` | Store the logs from `start` to `end`        |
 
