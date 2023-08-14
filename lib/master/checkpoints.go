@@ -29,14 +29,56 @@ type PersistentChunkMetadata struct {
 	LeaseExpire time.Time
 }
 
+func (dir *DirectoryInfo) addFileWithoutLock(fileName []string, chunks FileChunks) {
+	switch len(fileName) {
+	case 0:
+		panic("should not happen")
+	case 1:
+		dir.Files[fileName[0]] = &FileMetadata{Chunks: chunks}
+	default:
+		subDir, exists := dir.Directories[fileName[0]]
+		if !exists {
+			subDir = &DirectoryInfo{
+				Parent:      dir,
+				Files:       make(map[string]*FileMetadata),
+				Directories: make(map[string]*DirectoryInfo),
+			}
+			dir.Directories[fileName[0]] = subDir
+		}
+		subDir.addFileWithoutLock(fileName[1:], chunks)
+	}
+}
+
+func (data *PersistentNamespaceMetadata) toNamespaceMetadata() *NamespaceMetadata {
+	namespaceMetadata := MakeNamespace()
+	for path, fileChunks := range data.Files {
+		namespaceMetadata.Root.addFileWithoutLock(utils.ParsePath(path), fileChunks)
+	}
+	return namespaceMetadata
+}
+
+func (data *PersistentChunkMetadata) toChunkMetadata() *ChunkMetadata {
+	return &ChunkMetadata{
+		Version:     data.Version,
+		RefCount:    data.RefCount,
+		LeaseHolder: data.LeaseHolder,
+		LeaseExpire: data.LeaseExpire,
+		Servers:     make(map[gfs.ServerInfo]bool),
+	}
+}
+
 func (checkpoint *Checkpoint) toMasterStruct(
 	serverInfo gfs.ServerInfo,
 	masterRoot string,
 	checkpointIndex int64,
 ) *Master {
 	master := MakeMaster(serverInfo, masterRoot)
-	// TODO: load namespaces
-	// TODO: load chunks
+	for namespace, namespaceData := range checkpoint.Namespaces {
+		master.namespaces[namespace] = namespaceData.toNamespaceMetadata()
+	}
+	for chunkHandle, chunkData := range checkpoint.Chunks {
+		master.chunks[chunkHandle] = chunkData.toChunkMetadata()
+	}
 	master.nextChunkHandle = checkpoint.NextChunkHandle
 	master.nextLogIndex = checkpointIndex + 1
 	return master
@@ -175,5 +217,7 @@ func (master *Master) addNewCheckpoint(index int64) error {
 		oldCheckpointName := utils.MergePath(master.checkpointDir, fmt.Sprintf("%d.checkpoint", oldIndex))
 		_ = os.Remove(oldCheckpointName)
 	}
+
+	// TODO: compress the logs in range (oldIndex, newIndex)
 	return nil
 }
