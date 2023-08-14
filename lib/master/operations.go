@@ -12,6 +12,9 @@ import (
 
 const (
 	Invalid = iota
+	// For namespaces
+	CreateNamespaceOperation
+
 	// For files
 	AddFileOperation
 	DeleteFileOperation
@@ -106,6 +109,12 @@ func (master *Master) replayLog(logIndex int64) error {
 	switch header.Operation {
 	case Invalid:
 		return errors.New("invalid operation")
+	case CreateNamespaceOperation:
+		var entry CreateNamespaceOperationLogEntry
+		if err = decoder.Decode(&entry); err != nil {
+			return err
+		}
+		_ = entry.Execute(master)
 	case AddFileOperation:
 		var entry AddFileOperationLogEntry
 		if err = decoder.Decode(&entry); err != nil {
@@ -151,6 +160,20 @@ func (master *Master) replayLog(logIndex int64) error {
 	default:
 		return errors.New("log type not found")
 	}
+	return nil
+}
+
+type CreateNamespaceOperationLogEntry struct {
+	Namespace gfs.Namespace
+}
+
+func (entry *CreateNamespaceOperationLogEntry) Execute(master *Master) error {
+	master.namespacesLock.Lock()
+	defer master.namespacesLock.Unlock()
+	if _, exists := master.namespaces[entry.Namespace]; exists {
+		return errors.New("namespace already exists")
+	}
+	master.namespaces[entry.Namespace] = MakeNamespace()
 	return nil
 }
 
