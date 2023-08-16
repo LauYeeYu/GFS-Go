@@ -248,6 +248,7 @@ func (entry *DeleteFileOperationLogEntry) Execute(master *Master) error {
 	fileMeta.Chunks = []gfs.ChunkHandle{}
 	fileMeta.Unlock()
 	delete(dir.Files, entry.Pathname)
+	_ = namespaceMeta.UnlockFileOrDirectory(parent, false)
 	return nil
 }
 
@@ -305,6 +306,9 @@ func (entry *SnapshotOperationLogEntry) Execute(master *Master) error {
 	if err != nil {
 		return err
 	}
+	defer func(Root *DirectoryInfo, task *LockTask) {
+		_ = Root.unlockWithLockTask(task)
+	}(namespaceMeta.Root, lockPlan)
 
 	// snapshot
 	destDir, err := namespaceMeta.getDirectory(entry.Destination)
