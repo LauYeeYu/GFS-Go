@@ -32,7 +32,7 @@ type OperationLogEntryHeader struct {
 	Operation int
 }
 
-func NewOperationLogEntryHeader(operation int) *OperationLogEntryHeader {
+func MakeOperationLogEntryHeader(operation int) *OperationLogEntryHeader {
 	return &OperationLogEntryHeader{
 		Time:      time.Now(),
 		Operation: operation,
@@ -41,9 +41,9 @@ func NewOperationLogEntryHeader(operation int) *OperationLogEntryHeader {
 
 type LogEntry interface {
 	// Execute makes the changes to the master the metadata.
-	// Note: Execute should not send any RPCs because it can also be
-	// call when recovering.
 	Execute(master *Master) error
+	// Replay replays the log entry. It should not send any RPCs.
+	Replay(master *Master) error
 }
 
 func (master *Master) appendLog(log OperationLogEntryHeader, entry LogEntry) error {
@@ -130,49 +130,49 @@ func (master *Master) replayLog(logIndex int64) error {
 		if err = decoder.Decode(&entry); err != nil {
 			return err
 		}
-		_ = entry.Execute(master)
+		_ = entry.Replay(master)
 	case AddFileOperation:
 		var entry AddFileOperationLogEntry
 		if err = decoder.Decode(&entry); err != nil {
 			return err
 		}
-		_ = entry.Execute(master)
+		_ = entry.Replay(master)
 	case DeleteFileOperation:
 		var entry DeleteFileOperationLogEntry
 		if err = decoder.Decode(&entry); err != nil {
 			return err
 		}
-		_ = entry.Execute(master)
+		_ = entry.Replay(master)
 	case MoveFileOperation:
 		var entry MoveFileOperationLogEntry
 		if err = decoder.Decode(&entry); err != nil {
 			return err
 		}
-		_ = entry.Execute(master)
+		_ = entry.Replay(master)
 	case SnapshotOperation:
 		var entry SnapshotOperationLogEntry
 		if err = decoder.Decode(&entry); err != nil {
 			return err
 		}
-		_ = entry.Execute(master)
+		_ = entry.Replay(master)
 	case AddChunkToFile:
 		var entry AddChunkToFileOperationLogEntry
 		if err = decoder.Decode(&entry); err != nil {
 			return err
 		}
-		_ = entry.Execute(master)
+		_ = entry.Replay(master)
 	case GrantLeaseOperation:
 		var entry GrantLeaseOperationLogEntry
 		if err = decoder.Decode(&entry); err != nil {
 			return err
 		}
-		_ = entry.Execute(master)
+		_ = entry.Replay(master)
 	case RevokeLeaseOperation:
 		var entry RevokeLeaseOperationLogEntry
 		if err = decoder.Decode(&entry); err != nil {
 			return err
 		}
-		_ = entry.Execute(master)
+		_ = entry.Replay(master)
 	default:
 		return errors.New("log type not found")
 	}
@@ -193,6 +193,10 @@ func (entry *CreateNamespaceOperationLogEntry) Execute(master *Master) error {
 	return nil
 }
 
+func (entry *CreateNamespaceOperationLogEntry) Replay(master *Master) error {
+	return entry.Execute(master)
+}
+
 type AddFileOperationLogEntry struct {
 	Namespace gfs.Namespace
 	Pathname  string
@@ -206,6 +210,10 @@ func (entry *AddFileOperationLogEntry) Execute(master *Master) error {
 		return errors.New("namespace not found")
 	}
 	return namespaceMeta.addFile(entry.Pathname)
+}
+
+func (entry *AddFileOperationLogEntry) Replay(master *Master) error {
+	return entry.Execute(master)
 }
 
 type DeleteFileOperationLogEntry struct {
@@ -243,6 +251,10 @@ func (entry *DeleteFileOperationLogEntry) Execute(master *Master) error {
 	return nil
 }
 
+func (entry *DeleteFileOperationLogEntry) Replay(master *Master) error {
+	return entry.Execute(master)
+}
+
 type MoveFileOperationLogEntry struct {
 	Namespace   gfs.Namespace
 	Source      string
@@ -257,6 +269,10 @@ func (entry *MoveFileOperationLogEntry) Execute(master *Master) error {
 		return errors.New("namespace not found")
 	}
 	return namespaceMeta.moveFile(entry.Source, entry.Destination)
+}
+
+func (entry *MoveFileOperationLogEntry) Replay(master *Master) error {
+	return entry.Execute(master)
 }
 
 type SnapshotOperationLogEntry struct {
@@ -302,6 +318,10 @@ func (entry *SnapshotOperationLogEntry) Execute(master *Master) error {
 	return destDir.snapshot(master, srcDir)
 }
 
+func (entry *SnapshotOperationLogEntry) Replay(master *Master) error {
+	return entry.Execute(master)
+}
+
 type AddChunkToFileOperationLogEntry struct {
 	Namespace gfs.Namespace
 	Pathname  string
@@ -343,6 +363,10 @@ func (entry *AddChunkToFileOperationLogEntry) Execute(master *Master) error {
 	return nil
 }
 
+func (entry *AddChunkToFileOperationLogEntry) Replay(master *Master) error {
+	return entry.Execute(master)
+}
+
 type GrantLeaseOperationLogEntry struct {
 	Chunk       gfs.ChunkHandle
 	LeaseHolder gfs.ServerInfo
@@ -354,11 +378,21 @@ func (entry *GrantLeaseOperationLogEntry) Execute(master *Master) error {
 	return nil
 }
 
+func (entry *GrantLeaseOperationLogEntry) Replay(master *Master) error {
+	//TODO
+	return nil
+}
+
 type RevokeLeaseOperationLogEntry struct {
 	Chunk gfs.ChunkHandle
 }
 
 func (entry *RevokeLeaseOperationLogEntry) Execute(master *Master) error {
+	//TODO
+	return nil
+}
+
+func (entry *RevokeLeaseOperationLogEntry) Replay(master *Master) error {
 	//TODO
 	return nil
 }
