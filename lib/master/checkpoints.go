@@ -150,9 +150,7 @@ func getLastCheckpoint(serverInfo gfs.ServerInfo, masterRoot string) (*Master, i
 	if err = decoder.Decode(&checkpoint); err != nil {
 		return nil, 0, err
 	}
-
 	return nil, 0, nil
-
 }
 
 func (master *Master) addNewCheckpoint(index int64) error {
@@ -177,7 +175,7 @@ func (master *Master) addNewCheckpoint(index int64) error {
 		if err = lastCheckpoint.replayLog(i); err != nil {
 			return errors.New(fmt.Sprintf("an error occurred when replaying log %d: %v", i, err.Error()))
 		} else {
-			master.nextLogIndex++
+			lastCheckpoint.nextLogIndex++
 		}
 	}
 
@@ -198,7 +196,7 @@ func (master *Master) addNewCheckpoint(index int64) error {
 		return err
 	}
 	encoder := gob.NewEncoder(file)
-	if err = encoder.Encode(master.toCheckpointType()); err != nil {
+	if err = encoder.Encode(lastCheckpoint.toCheckpointType()); err != nil {
 		_ = file.Close()
 		return err
 	}
