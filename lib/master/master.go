@@ -31,6 +31,7 @@ type Master struct {
 	// Operation logs
 	nextLogIndex     int64      // start from 1
 	operationLogLock sync.Mutex // make sure that only one operation log is written at a time
+	lastCheckpoint   int64      // the index of the last checkpoint
 	checkpointLock   sync.Mutex // make sure that only one checkpoint is written at a time
 
 	// RPC

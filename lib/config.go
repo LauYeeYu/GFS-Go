@@ -2,13 +2,15 @@ package gfs
 
 import "time"
 
+const CheckpointInterval = 100
+
 // Constants for chunks
 const (
 	ChunkSize        = 64 * 1024 * 1024 // 64MiB
 	NumberOfReplicas = 3
 )
 
-// Constant for time
+// Constants for time
 const (
 	PeriodicWorkInterval = 60 * time.Second        // 60s
 	HeartbeatInterval    = 200 * time.Millisecond  // 200ms

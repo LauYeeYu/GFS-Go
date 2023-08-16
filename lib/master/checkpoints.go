@@ -209,6 +209,7 @@ func (master *Master) addNewCheckpoint(index int64) error {
 	if err != nil {
 		return err
 	}
+	master.lastCheckpoint = index
 
 	// Remove the last checkpoint
 	// If we remove the last checkpoint every time we add a new one, there

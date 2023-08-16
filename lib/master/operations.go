@@ -40,10 +40,14 @@ func NewOperationLogEntryHeader(operation int) *OperationLogEntryHeader {
 }
 
 type LogEntry interface {
+	// Execute makes the changes to the master the metadata.
+	// Note: Execute should not send any RPCs because it can also be
+	// call when recovering.
 	Execute(master *Master) error
 }
 
 func (master *Master) appendLog(log OperationLogEntryHeader, entry LogEntry) error {
+	// Write the log to the log file
 	master.operationLogLock.Lock()
 	logIndex := master.nextLogIndex
 	master.nextLogIndex++
@@ -54,6 +58,18 @@ func (master *Master) appendLog(log OperationLogEntryHeader, entry LogEntry) err
 		return err
 	}
 	master.operationLogLock.Unlock()
+
+	// Add a new checkpoint if necessary
+	go func() {
+		master.checkpointLock.Lock()
+		lastCheckpoint := master.lastCheckpoint
+		master.checkpointLock.Unlock()
+		if logIndex-lastCheckpoint >= gfs.CheckpointInterval {
+			_ = master.addNewCheckpoint(logIndex)
+		}
+	}()
+
+	// execute the log
 	return entry.Execute(master)
 }
 
