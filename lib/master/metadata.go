@@ -275,12 +275,12 @@ func (dir *DirectoryInfo) unlockFileOrDirectory(segments []string, readOnly bool
 	}
 }
 
-// LockFileOrDirectory locks the file or directory
+// LockFileOrDirectory locks the file or directory and all its parent directories
 func (namespace *NamespaceMetadata) LockFileOrDirectory(pathname string, readOnly bool) error {
 	return namespace.Root.lockFileOrDirectory(utils.ParsePath(pathname), readOnly)
 }
 
-// UnlockFileOrDirectory unlocks the file or directory
+// UnlockFileOrDirectory unlocks the file or directory and all its parent directories
 func (namespace *NamespaceMetadata) UnlockFileOrDirectory(pathname string, readOnly bool) error {
 	return namespace.Root.unlockFileOrDirectory(utils.ParsePath(pathname), readOnly)
 }
