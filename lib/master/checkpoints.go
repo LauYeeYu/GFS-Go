@@ -131,8 +131,8 @@ func (master *Master) toCheckpointType() Checkpoint {
 }
 
 func getLastCheckpoint(serverInfo gfs.ServerInfo, masterRoot string) (*Master, int64, error) {
-	checkpointDir := utils.MergePath(masterRoot, "checkpoints")
-	checkpointNum := utils.MergePath(checkpointDir, "last_checkpoint_index")
+	checkpointDir := utils.MergePath(masterRoot, gfs.CheckpointDirName)
+	checkpointNum := utils.MergePath(checkpointDir, gfs.CheckpointIndexName)
 	index, err := utils.ReadTextInt64FromFile(checkpointNum)
 	if err != nil {
 		return nil, 0, err
@@ -140,7 +140,7 @@ func getLastCheckpoint(serverInfo gfs.ServerInfo, masterRoot string) (*Master, i
 	if index == 0 {
 		return MakeMaster(serverInfo, masterRoot), 0, nil
 	}
-	fileName := utils.MergePath(checkpointDir, fmt.Sprintf("%d.checkpoint", index))
+	fileName := utils.MergePath(checkpointDir, fmt.Sprintf("%d%s", index, gfs.CheckpointSuffix))
 	file, err := os.OpenFile(fileName, os.O_WRONLY, 0644)
 	if err != nil {
 		return nil, 0, err
@@ -158,7 +158,7 @@ func getLastCheckpoint(serverInfo gfs.ServerInfo, masterRoot string) (*Master, i
 func (master *Master) addNewCheckpoint(index int64) error {
 	// Make sure that there is only one checkpoint goroutines in case there
 	// are too many checkpoint routines working together, causing conflict
-	// on the last_checkpoint_index file.
+	// on the last checkpoint index file.
 	master.checkpointLock.Lock()
 	defer master.checkpointLock.Unlock()
 
@@ -182,7 +182,10 @@ func (master *Master) addNewCheckpoint(index int64) error {
 	}
 
 	// Make another checkpoint
-	fileName := utils.MergePath(master.checkpointDir, fmt.Sprintf("%d.checkpoint", index))
+	fileName := utils.MergePath(
+		master.checkpointDir,
+		fmt.Sprintf("%d%s", index, gfs.CheckpointSuffix),
+	)
 	file, err := os.OpenFile(fileName, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
@@ -203,7 +206,7 @@ func (master *Master) addNewCheckpoint(index int64) error {
 
 	// Update the index file
 	err = utils.WriteTextInt64ToFile(
-		utils.MergePath(master.checkpointDir, "last_checkpoint_index"),
+		utils.MergePath(master.checkpointDir, gfs.CheckpointIndexName),
 		index,
 	)
 	if err != nil {
@@ -215,7 +218,10 @@ func (master *Master) addNewCheckpoint(index int64) error {
 	// If we remove the last checkpoint every time we add a new one, there
 	// should be only one checkpoint.
 	if oldIndex != 0 {
-		oldCheckpointName := utils.MergePath(master.checkpointDir, fmt.Sprintf("%d.checkpoint", oldIndex))
+		oldCheckpointName := utils.MergePath(
+			master.checkpointDir,
+			fmt.Sprintf("%d%s", oldIndex, gfs.CheckpointSuffix),
+		)
 		_ = os.Remove(oldCheckpointName)
 	}
 

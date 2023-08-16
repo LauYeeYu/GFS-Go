@@ -17,3 +17,13 @@ const (
 	HeartbeatTimeout     = 1000 * time.Millisecond // 1s
 	LeaseTimeout         = 5 * time.Second         // 5s
 )
+
+// Constant strings for master
+const (
+	LogDirName           = "log"
+	LogIndexName         = "last_log_index"
+	CheckpointDirName    = "checkpoints"
+	CheckpointIndexName  = "last_checkpoint_index"
+	CheckpointSuffix     = ".checkpoint"
+	CompressedLogDirName = "compressed_log"
+)

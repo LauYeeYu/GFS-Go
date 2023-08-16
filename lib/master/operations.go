@@ -99,7 +99,7 @@ func (master *Master) writeLog(logIndex int64, log OperationLogEntryHeader, entr
 	}
 	_ = file.Close()
 	// Update the index file
-	return utils.WriteTextInt64ToFile(utils.MergePath(master.logDir, "index"), logIndex)
+	return utils.WriteTextInt64ToFile(utils.MergePath(master.logDir, gfs.LogIndexName), logIndex)
 }
 
 // replayLog replays the log at logIndex
