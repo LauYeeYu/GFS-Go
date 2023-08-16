@@ -45,7 +45,7 @@ type ChunkMetadata struct {
 	LeaseExpire time.Time
 
 	// In-memory data
-	Servers map[gfs.ServerInfo]bool // initialized with HeartBeat
+	Servers utils.Set[gfs.ServerInfo] // initialized with HeartBeat
 }
 
 // exists returns true if the file or directory already exists
@@ -489,7 +489,7 @@ func (chunkMeta *ChunkMetadata) removeChunkserver(server gfs.ServerInfo) {
 func (chunkMeta *ChunkMetadata) addChunkserver(server gfs.ServerInfo) {
 	chunkMeta.Lock()
 	defer chunkMeta.Unlock()
-	chunkMeta.Servers[server] = true
+	chunkMeta.Servers.Add(server)
 }
 
 func (master *Master) reduceChunkRef(chunk gfs.ChunkHandle) error {

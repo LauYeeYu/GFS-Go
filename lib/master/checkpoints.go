@@ -63,7 +63,7 @@ func (data *PersistentChunkMetadata) toChunkMetadata() *ChunkMetadata {
 		RefCount:    data.RefCount,
 		LeaseHolder: data.LeaseHolder,
 		LeaseExpire: data.LeaseExpire,
-		Servers:     make(map[gfs.ServerInfo]bool),
+		Servers:     utils.MakeSet[gfs.ServerInfo](),
 	}
 }
 

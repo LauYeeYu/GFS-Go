@@ -329,42 +329,55 @@ type AddChunkToFileOperationLogEntry struct {
 }
 
 func (entry *AddChunkToFileOperationLogEntry) Execute(master *Master) error {
-	master.namespacesLock.RLock()
-	namespaceMeta, exists := master.namespaces[entry.Namespace]
-	master.namespacesLock.RUnlock()
-	if !exists {
-		return errors.New("namespace not found")
-	}
-	fileMeta, err := namespaceMeta.lockAndGetFile(entry.Pathname, false)
+	chunk, err := entry.addChunkToFile(master)
 	if err != nil {
 		return err
 	}
-	fileMeta.Chunks = append(fileMeta.Chunks, entry.Chunk)
-	master.chunksLock.Lock()
-	chunk, ok := master.chunks[entry.Chunk]
-	if !ok {
-		// FIXME: servers should be the servers that have the chunk
-		var servers []gfs.ServerInfo
-		serverMap := make(map[gfs.ServerInfo]bool)
-		for _, server := range servers {
-			serverMap[server] = true
-		}
-		master.chunksLock.Lock()
-		master.chunks[entry.Chunk] = &ChunkMetadata{
-			Version:     0,
-			RefCount:    1,
-			LeaseHolder: nil,
-			LeaseExpire: time.Now(),
-			Servers:     serverMap,
-		}
-	} else {
-		chunk.RefCount++
+	if chunk.Servers.Size() == 0 {
+		// TODO: dispatch chunk to servers
 	}
 	return nil
 }
 
 func (entry *AddChunkToFileOperationLogEntry) Replay(master *Master) error {
-	return entry.Execute(master)
+	_, err := entry.addChunkToFile(master)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (entry *AddChunkToFileOperationLogEntry) addChunkToFile(master *Master) (*ChunkMetadata, error) {
+	master.namespacesLock.RLock()
+	namespaceMeta, exists := master.namespaces[entry.Namespace]
+	master.namespacesLock.RUnlock()
+	if !exists {
+		return nil, errors.New("namespace not found")
+	}
+	fileMeta, err := namespaceMeta.lockAndGetFile(entry.Pathname, false)
+	if err != nil {
+		return nil, err
+	}
+	fileMeta.Chunks = append(fileMeta.Chunks, entry.Chunk)
+	_ = namespaceMeta.UnlockFileOrDirectory(entry.Pathname, false)
+	master.chunksLock.Lock()
+	chunk, ok := master.chunks[entry.Chunk]
+	master.chunksLock.Unlock()
+	if !ok {
+		master.chunksLock.Lock()
+		chunk = &ChunkMetadata{
+			Version:     0,
+			RefCount:    1,
+			LeaseHolder: nil,
+			LeaseExpire: time.Now(),
+			Servers:     utils.MakeSet[gfs.ServerInfo](),
+		}
+		master.chunks[entry.Chunk] = chunk
+		master.chunksLock.Unlock()
+	} else {
+		chunk.RefCount++
+	}
+	return chunk, nil
 }
 
 type GrantLeaseOperationLogEntry struct {
