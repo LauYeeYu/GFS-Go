@@ -165,7 +165,7 @@ func (dir *DirectoryInfo) lockWithLockTask(task *LockTask) error {
 	}
 
 	// lock itself
-	if task.readOnly {
+	if task.ReadOnly {
 		dir.RLock()
 	} else {
 		dir.Lock()
@@ -176,32 +176,37 @@ func (dir *DirectoryInfo) lockWithLockTask(task *LockTask) error {
 		cleanup := func() {
 			unlockTask := &LockTask{
 				Name:     task.Name,
-				readOnly: task.readOnly,
+				ReadOnly: task.ReadOnly,
 				Subtasks: task.Subtasks[:i],
 			}
 			_ = dir.unlockWithLockTask(unlockTask)
 		}
-		if subdirectory, ok := dir.Directories[subtask.Name]; ok {
-			err := subdirectory.lockWithLockTask(subtask)
-			if err != nil {
-				cleanup()
-				return err
-			}
-		} else if file, ok := dir.Files[subtask.Name]; ok {
-			if len(subtask.Subtasks) == 0 { // the last segment
-				if subtask.readOnly {
-					file.RLock()
-				} else {
-					file.Lock()
+		if CanBeDirectory(subtask.Requirement) {
+			if subdirectory, ok := dir.Directories[subtask.Name]; ok {
+				err := subdirectory.lockWithLockTask(subtask)
+				if err != nil {
+					cleanup()
+					return err
 				}
-			} else { // not the last segment
-				cleanup()
-				return errors.New(fmt.Sprintf("file %s is not a directory", subtask.Name))
 			}
-		} else { // the file or directory does not exist
-			cleanup()
-			return errors.New(fmt.Sprintf("file or directory %s does not exist", subtask.Name))
 		}
+		if CanBeFile(subtask.Requirement) {
+			if file, ok := dir.Files[subtask.Name]; ok {
+				if len(subtask.Subtasks) == 0 { // the last segment
+					if subtask.ReadOnly {
+						file.RLock()
+					} else {
+						file.Lock()
+					}
+				} else { // not the last segment
+					cleanup()
+					return errors.New(fmt.Sprintf("file %s is not a directory", subtask.Name))
+				}
+			}
+		}
+		// the file or directory does not exist
+		cleanup()
+		return errors.New(fmt.Sprintf("file or directory %s does not exist", subtask.Name))
 	}
 	return nil
 }
@@ -215,7 +220,7 @@ func (dir *DirectoryInfo) unlockWithLockTask(task *LockTask) error {
 	}
 
 	// unlock itself
-	if task.readOnly {
+	if task.ReadOnly {
 		dir.RUnlock()
 	} else {
 		dir.Unlock()
@@ -231,7 +236,7 @@ func (dir *DirectoryInfo) unlockWithLockTask(task *LockTask) error {
 			}
 		} else if file, ok := dir.Files[subtask.Name]; ok {
 			if len(subtask.Subtasks) == 0 { // the last segment
-				if subtask.readOnly {
+				if subtask.ReadOnly {
 					file.RUnlock()
 				} else {
 					file.Unlock()
@@ -410,8 +415,8 @@ func (namespace *NamespaceMetadata) moveFile(oldPathname, newPathname string) er
 	}
 	newSegment := utils.ParsePath(newParent)
 	oldSegment := utils.ParsePath(oldParent)
-	newLockTask := MakeLockTaskFromStringSlice(newSegment, false)
-	oldLockTask := MakeLockTaskFromStringSlice(oldSegment, false)
+	newLockTask := MakeLockTaskFromStringSlice(newSegment, false, LockDirectory)
+	oldLockTask := MakeLockTaskFromStringSlice(oldSegment, false, LockDirectory)
 	task, err := MergeLockTasks(newLockTask, oldLockTask)
 	if err != nil {
 		return err

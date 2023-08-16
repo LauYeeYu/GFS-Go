@@ -2,10 +2,49 @@ package master
 
 import "errors"
 
+const (
+	LockFileOrDirectory = iota
+	LockFile
+	LockDirectory
+)
+
 type LockTask struct {
-	Name     string
-	readOnly bool
-	Subtasks []*LockTask
+	Name        string
+	ReadOnly    bool
+	Requirement int
+	Subtasks    []*LockTask
+}
+
+func RequirementConflict(requirement1, requirement2 int) bool {
+	if requirement1 == LockFileOrDirectory || requirement2 == LockFileOrDirectory {
+		return false
+	} else {
+		return requirement1 != requirement2
+	}
+}
+
+func MergeRequirement(requirement1, requirement2 int) (int, error) {
+	if requirement1 == LockFileOrDirectory {
+		return requirement2, nil
+	} else if requirement2 == LockFileOrDirectory {
+		return requirement1, nil
+	} else if requirement1 == requirement2 {
+		return requirement1, nil
+	} else {
+		return 0, errors.New("requirement conflict")
+	}
+}
+
+func CanBeFile(requirement int) bool {
+	return requirement == LockFile || requirement == LockFileOrDirectory
+}
+
+func CanBeDirectory(requirement int) bool {
+	return requirement == LockDirectory || requirement == LockFileOrDirectory
+}
+
+func MergeReadOnly(readOnly1, readOnly2 bool) bool {
+	return readOnly1 && readOnly2
 }
 
 // Insert inserts a lock task into the lock task tree. If the lock task already
@@ -37,31 +76,38 @@ func (task *LockTask) FindSubtask(name string) *LockTask {
 	return nil
 }
 
-func makeLockTaskFromStrings(names []string, readOnly bool) *LockTask {
+func makeLockTaskFromStrings(names []string, readOnly bool, requirement int) *LockTask {
 	if len(names) == 0 {
 		return nil
 	}
 	if len(names) == 1 {
-		return &LockTask{Name: names[0], readOnly: readOnly}
+		return &LockTask{
+			Name:        names[0],
+			ReadOnly:    readOnly,
+			Requirement: requirement,
+			Subtasks:    []*LockTask{},
+		}
 	}
 	return &LockTask{
 		Name:     names[0],
-		readOnly: false,
-		Subtasks: []*LockTask{makeLockTaskFromStrings(names[1:], readOnly)},
+		ReadOnly: false,
+		Subtasks: []*LockTask{makeLockTaskFromStrings(
+			names[1:], readOnly, requirement,
+		)},
 	}
 }
 
-func MakeLockTaskFromStringSlice(names []string, readOnly bool) *LockTask {
+func MakeLockTaskFromStringSlice(names []string, readOnly bool, requirement int) *LockTask {
 	if len(names) == 0 {
 		return &LockTask{
 			Name:     "",
-			readOnly: readOnly,
+			ReadOnly: readOnly,
 			Subtasks: []*LockTask{},
 		}
 	}
 	return &LockTask{
 		Name:     "",
-		Subtasks: []*LockTask{makeLockTaskFromStrings(names, readOnly)},
+		Subtasks: []*LockTask{makeLockTaskFromStrings(names, readOnly, requirement)},
 	}
 }
 
@@ -77,11 +123,15 @@ func MergeLockTasks(task1, task2 *LockTask) (*LockTask, error) {
 	if task1.Name != task2.Name {
 		return nil, errors.New("cannot merge lock tasks with different names")
 	}
-	if len(task1.Subtasks) == 0 {
-		return task2, nil
+	requirement, err := MergeRequirement(task1.Requirement, task2.Requirement)
+	if err != nil {
+		return nil, err
 	}
-	if len(task2.Subtasks) == 0 {
-		return task1, nil
+	newTask := &LockTask{
+		Name:        task1.Name,
+		ReadOnly:    MergeReadOnly(task1.ReadOnly, task2.ReadOnly),
+		Requirement: requirement,
+		Subtasks:    task1.Subtasks,
 	}
 	for _, subtask2 := range task2.Subtasks {
 		subtask1 := task1.FindSubtask(subtask2.Name)
@@ -94,5 +144,5 @@ func MergeLockTasks(task1, task2 *LockTask) (*LockTask, error) {
 			}
 		}
 	}
-	return task1, nil
+	return newTask, nil
 }

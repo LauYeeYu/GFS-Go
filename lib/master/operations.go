@@ -41,6 +41,8 @@ func MakeOperationLogEntryHeader(operation int) *OperationLogEntryHeader {
 
 type LogEntry interface {
 	// Execute makes the changes to the master the metadata.
+	// Note: the function will be called with operation log lock held. You
+	// may lock everything up and then open a goroutine to do the actual work.
 	Execute(master *Master) error
 	// Replay replays the log entry. It should not send any RPCs.
 	Replay(master *Master) error
@@ -49,15 +51,14 @@ type LogEntry interface {
 func (master *Master) appendLog(log OperationLogEntryHeader, entry LogEntry) error {
 	// Write the log to the log file
 	master.operationLogLock.Lock()
+	defer master.operationLogLock.Unlock()
 	logIndex := master.nextLogIndex
 	master.nextLogIndex++
 	err := master.writeLog(logIndex, log, entry)
 	if err != nil {
 		master.nextLogIndex--
-		master.operationLogLock.Unlock()
 		return err
 	}
-	master.operationLogLock.Unlock()
 
 	// Add a new checkpoint if necessary
 	go func() {
@@ -241,14 +242,16 @@ func (entry *DeleteFileOperationLogEntry) Execute(master *Master) error {
 		_ = namespaceMeta.UnlockFileOrDirectory(parent, false)
 		return errors.New("file not found")
 	}
-	fileMeta.Lock()
-	for _, chunk := range fileMeta.Chunks {
-		_ = master.reduceChunkRef(chunk)
-	}
-	fileMeta.Chunks = []gfs.ChunkHandle{}
-	fileMeta.Unlock()
-	delete(dir.Files, entry.Pathname)
-	_ = namespaceMeta.UnlockFileOrDirectory(parent, false)
+	go func() {
+		fileMeta.Lock()
+		for _, chunk := range fileMeta.Chunks {
+			_ = master.reduceChunkRef(chunk)
+		}
+		fileMeta.Chunks = []gfs.ChunkHandle{}
+		fileMeta.Unlock()
+		delete(dir.Files, entry.Pathname)
+		_ = namespaceMeta.UnlockFileOrDirectory(parent, false)
+	}()
 	return nil
 }
 
@@ -293,8 +296,8 @@ func (entry *SnapshotOperationLogEntry) Execute(master *Master) error {
 	if err != nil {
 		return err
 	}
-	newLockPlan := MakeLockTaskFromStringSlice(utils.ParsePath(entry.Destination), false)
-	oldLockPlan := MakeLockTaskFromStringSlice(utils.ParsePath(entry.Source), true)
+	newLockPlan := MakeLockTaskFromStringSlice(utils.ParsePath(entry.Destination), false, LockDirectory)
+	oldLockPlan := MakeLockTaskFromStringSlice(utils.ParsePath(entry.Source), true, LockDirectory)
 	if newLockPlan == nil || oldLockPlan == nil {
 		return errors.New("invalid snapshot path")
 	}
@@ -306,20 +309,20 @@ func (entry *SnapshotOperationLogEntry) Execute(master *Master) error {
 	if err != nil {
 		return err
 	}
-	defer func(Root *DirectoryInfo, task *LockTask) {
-		_ = Root.unlockWithLockTask(task)
-	}(namespaceMeta.Root, lockPlan)
-
+	destDir, _ := namespaceMeta.getDirectory(entry.Destination)
+	if len(destDir.Files) > 0 || len(destDir.Directories) > 0 {
+		_ = namespaceMeta.Root.unlockWithLockTask(lockPlan)
+		return errors.New("destination directory is not empty")
+	}
+	srcDir, _ := namespaceMeta.getDirectory(entry.Source)
 	// snapshot
-	destDir, err := namespaceMeta.getDirectory(entry.Destination)
-	if err != nil {
-		return err
-	}
-	srcDir, err := namespaceMeta.getDirectory(entry.Source)
-	if err != nil {
-		return err
-	}
-	return destDir.snapshot(master, srcDir)
+	go func() {
+		// Should not return error, since we have already check whether
+		// destDir is empty.
+		_ = destDir.snapshot(master, srcDir)
+		_ = namespaceMeta.Root.unlockWithLockTask(lockPlan)
+	}()
+	return nil
 }
 
 func (entry *SnapshotOperationLogEntry) Replay(master *Master) error {
