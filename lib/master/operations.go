@@ -65,7 +65,7 @@ func (master *Master) appendLog(log OperationLogEntryHeader, entry LogEntry) err
 		lastCheckpoint := master.lastCheckpoint
 		master.checkpointLock.Unlock()
 		if logIndex-lastCheckpoint >= gfs.CheckpointInterval {
-			_ = master.addNewCheckpoint(logIndex)
+			_ = master.AddNewCheckpoint(logIndex)
 		}
 	}()
 

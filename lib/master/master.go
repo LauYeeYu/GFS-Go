@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/rpc"
+	"os"
 	"sync"
 	"time"
 )
@@ -41,14 +42,50 @@ type Master struct {
 	shutdown chan struct{}
 }
 
+func PrepareMaster(server gfs.ServerInfo, storageDir string) (*Master, error) {
+	// Prepare for the environment
+	err := os.MkdirAll(storageDir, 0755)
+	if err != nil {
+		return nil, err
+	}
+	logDir := utils.MergePath(storageDir, gfs.LogDirName)
+	logIndexFileName := utils.MergePath(logDir, gfs.LogIndexName)
+	compressedLogDir := utils.MergePath(storageDir, gfs.CompressedLogDirName)
+	checkpointDir := utils.MergePath(storageDir, gfs.CheckpointDirName)
+	checkpointIndexFileName := utils.MergePath(checkpointDir, gfs.CheckpointIndexName)
+	if utils.ExistFile(logIndexFileName) {
+		log.Println("Found log index file.")
+	} else {
+		if err = os.MkdirAll(logDir, 0755); err != nil {
+			return nil, err
+		}
+		if err = utils.WriteTextInt64ToFile(logIndexFileName, 0); err != nil {
+			return nil, err
+		}
+		log.Println("Log index file not found. A new file has been created.")
+	}
+	if err = os.MkdirAll(compressedLogDir, 0755); err != nil {
+		return nil, err
+	}
+	if !utils.ExistFile(checkpointIndexFileName) {
+		if err = os.MkdirAll(checkpointDir, 0755); err != nil {
+			return nil, err
+		}
+		if err = utils.WriteTextInt64ToFile(checkpointIndexFileName, 0); err != nil {
+			return nil, err
+		}
+	}
+	return RecoverFromLog(server, storageDir)
+}
+
 // MakeMaster creates a new Master instance
 func MakeMaster(server gfs.ServerInfo, storageDir string) *Master {
 	return &Master{
 		server:           server,
 		storageDir:       storageDir,
-		logDir:           utils.MergePath(storageDir, "log"),
-		compressedLogDir: utils.MergePath(storageDir, "compressed_log"),
-		checkpointDir:    utils.MergePath(storageDir, "checkpoints"),
+		logDir:           utils.MergePath(storageDir, gfs.LogDirName),
+		compressedLogDir: utils.MergePath(storageDir, gfs.CompressedLogDirName),
+		checkpointDir:    utils.MergePath(storageDir, gfs.CheckpointDirName),
 
 		namespaces:   make(map[gfs.Namespace]*NamespaceMetadata),
 		chunks:       make(map[gfs.ChunkHandle]*ChunkMetadata),

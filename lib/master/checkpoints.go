@@ -130,7 +130,8 @@ func (master *Master) toCheckpointType() Checkpoint {
 	return checkpoint
 }
 
-func getLastCheckpoint(serverInfo gfs.ServerInfo, masterRoot string) (*Master, int64, error) {
+// GetLastCheckpoint returns the last checkpoint and the index of the checkpoint
+func GetLastCheckpoint(serverInfo gfs.ServerInfo, masterRoot string) (*Master, int64, error) {
 	checkpointDir := utils.MergePath(masterRoot, gfs.CheckpointDirName)
 	checkpointNum := utils.MergePath(checkpointDir, gfs.CheckpointIndexName)
 	index, err := utils.ReadTextInt64FromFile(checkpointNum)
@@ -153,7 +154,27 @@ func getLastCheckpoint(serverInfo gfs.ServerInfo, masterRoot string) (*Master, i
 	return nil, 0, nil
 }
 
-func (master *Master) addNewCheckpoint(index int64) error {
+func RecoverFromLog(serverInfo gfs.ServerInfo, masterRoot string) (*Master, error) {
+	index, err := utils.ReadTextInt64FromFile(utils.MergePath(masterRoot, gfs.LogIndexName))
+	if err != nil {
+		return nil, err
+	}
+	master, oldIndex, err := GetLastCheckpoint(serverInfo, masterRoot)
+	if err != nil {
+		oldIndex = 0
+		master = MakeMaster(master.server, master.storageDir)
+	}
+	for i := oldIndex + 1; i <= index; i++ {
+		if err = master.replayLog(i); err != nil {
+			return nil, err
+		} else {
+		}
+	}
+	master.nextLogIndex = index + 1
+	return master, nil
+}
+
+func (master *Master) AddNewCheckpoint(index int64) error {
 	// Make sure that there is only one checkpoint goroutines in case there
 	// are too many checkpoint routines working together, causing conflict
 	// on the last checkpoint index file.
@@ -161,7 +182,7 @@ func (master *Master) addNewCheckpoint(index int64) error {
 	defer master.checkpointLock.Unlock()
 
 	// Get last checkpoint
-	lastCheckpoint, oldIndex, err := getLastCheckpoint(master.server, master.storageDir)
+	lastCheckpoint, oldIndex, err := GetLastCheckpoint(master.server, master.storageDir)
 	if err != nil {
 		oldIndex = 0
 		lastCheckpoint = MakeMaster(master.server, master.storageDir)
