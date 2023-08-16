@@ -26,7 +26,7 @@ type Master struct {
 	chunksLock       sync.RWMutex
 	nextChunkHandle  gfs.ChunkHandle
 	nextChunkLock    sync.Mutex
-	chunkservers     map[gfs.ServerInfo]struct{}
+	chunkservers     utils.Set[gfs.ServerInfo]
 	chunkserversLock sync.RWMutex
 
 	// Operation logs
@@ -89,7 +89,7 @@ func MakeMaster(server gfs.ServerInfo, storageDir string) *Master {
 
 		namespaces:   make(map[gfs.Namespace]*NamespaceMetadata),
 		chunks:       make(map[gfs.ChunkHandle]*ChunkMetadata),
-		chunkservers: make(map[gfs.ServerInfo]struct{}),
+		chunkservers: utils.MakeSet[gfs.ServerInfo](),
 
 		nextChunkHandle: 0,
 		nextLogIndex:    1,
@@ -175,10 +175,9 @@ func (master *Master) ReceiveHeartBeatRPC(
 ) error {
 	// register new chunkserver if needed
 	master.chunkserversLock.Lock()
-	_, exist := master.chunkservers[args.ServerInfo]
-	if !exist {
+	if !master.chunkservers.Contains(args.ServerInfo) {
 		log.Printf("New chunkserver %v joined\n", args.ServerInfo)
-		master.chunkservers[args.ServerInfo] = struct{}{}
+		master.chunkservers.Add(args.ServerInfo)
 	}
 	master.chunkserversLock.Unlock()
 
