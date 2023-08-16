@@ -458,13 +458,13 @@ func (dir *DirectoryInfo) snapshot(master *Master, sourceDir *DirectoryInfo) err
 	for filename, file := range sourceDir.Files {
 		dir.Files[filename] = master.makeFileCopy(file)
 	}
-	for dirname, subdir := range sourceDir.Directories {
+	for dirname, subDir := range sourceDir.Directories {
 		dir.Directories[dirname] = &DirectoryInfo{
 			Parent:      dir,
 			Files:       map[string]*FileMetadata{},
 			Directories: map[string]*DirectoryInfo{},
 		}
-		_ = dir.Directories[dirname].snapshot(master, subdir)
+		_ = dir.Directories[dirname].snapshot(master, subDir)
 	}
 	return nil
 }
