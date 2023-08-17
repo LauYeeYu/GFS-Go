@@ -31,4 +31,8 @@ const (
 // Constants for chunkserver
 const (
 	HeartbeatChunkNumber = 10
+	ChunkDirName         = "chunks"
+	LeaseDirName         = "leases"
+	ChecksumSuffix       = ".checksum"
+	VersionSuffix        = ".version"
 )

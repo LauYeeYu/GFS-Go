@@ -44,8 +44,8 @@ func MakeChunkserver(
 		server:     chunkserverInfo,
 		master:     masterInfo,
 		storageDir: storageDir,
-		chunksDir:  storageDir + "/chunks",
-		leasesDir:  storageDir + "/leases",
+		chunksDir:  utils.MergePath(storageDir, gfs.ChunkDirName),
+		leasesDir:  utils.MergePath(storageDir, gfs.LeaseDirName),
 		chunks:     make(map[gfs.ChunkHandle]*Chunk),
 	}
 	if err := chunkserver.loadChunks(); err != nil {
@@ -70,8 +70,8 @@ func (chunkserver *Chunkserver) loadChunks() error {
 		if file.IsDir() {
 			continue
 		}
-		if !strings.HasSuffix(file.Name(), ".checksum") &&
-			!strings.HasSuffix(file.Name(), ".version") {
+		if !strings.HasSuffix(file.Name(), gfs.ChecksumSuffix) &&
+			!strings.HasSuffix(file.Name(), gfs.VersionSuffix) {
 			// The file is a chunk
 			handleInt, err := strconv.ParseInt(file.Name(), 10, 64)
 			if err != nil {
