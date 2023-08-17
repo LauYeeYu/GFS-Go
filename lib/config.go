@@ -27,3 +27,8 @@ const (
 	CheckpointSuffix     = ".checkpoint"
 	CompressedLogDirName = "compressed_log"
 )
+
+// Constants for chunkserver
+const (
+	HeartbeatChunkNumber = 10
+)

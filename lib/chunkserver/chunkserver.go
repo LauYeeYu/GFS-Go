@@ -1,6 +1,7 @@
 package chunkserver
 
 import (
+	"container/heap"
 	"errors"
 	"gfs"
 	"gfs/utils"
@@ -27,6 +28,7 @@ type Chunkserver struct {
 	// chunks
 	chunks     map[gfs.ChunkHandle]*Chunk
 	chunksLock sync.RWMutex
+	chunkQueue chunkQueue
 
 	// shutdown
 	shutdown chan struct{}
@@ -50,6 +52,11 @@ func MakeChunkserver(
 		log.Println(err.Error())
 		return nil
 	}
+	chunks := make([]*chunkPriority, 0, len(chunkserver.chunks))
+	for _, chunk := range chunkserver.chunks {
+		chunks = append(chunks, makeChunkPriority(chunk))
+	}
+	chunkserver.chunkQueue = makeChunkQueue(chunks...)
 	return &chunkserver
 }
 
@@ -98,7 +105,7 @@ func (chunkserver *Chunkserver) Start() error {
 	// send HeartBeat
 	go func() {
 		for {
-			err := chunkserver.sendHeartBeat()
+			err := chunkserver.sendHeartBeat(false)
 			if err != nil {
 				log.Println(err.Error())
 			}
@@ -122,10 +129,15 @@ func (chunkserver *Chunkserver) handleAllRPCs() {
 	}
 }
 
-func (chunkserver *Chunkserver) sendHeartBeat() error {
-	chunks := make([]gfs.ChunkInfo, 0)
-	chunkserver.chunksLock.RLock()
-	for _, chunk := range chunkserver.chunks {
+func (chunkserver *Chunkserver) sendHeartBeat(withAllChunks bool) error {
+	var number int
+	if withAllChunks {
+		number = len(chunkserver.chunks)
+	} else {
+		number = gfs.HeartbeatChunkNumber
+	}
+	chunks := make([]gfs.ChunkInfo, 0, number)
+	putChunk := func(chunk *Chunk) {
 		chunk.RLock()
 		chunks = append(
 			chunks,
@@ -137,7 +149,25 @@ func (chunkserver *Chunkserver) sendHeartBeat() error {
 		)
 		chunk.RUnlock()
 	}
-	chunkserver.chunksLock.RUnlock()
+	if withAllChunks {
+		chunkserver.chunksLock.RLock()
+		for _, chunk := range chunkserver.chunks {
+			putChunk(chunk)
+		}
+		chunkserver.chunksLock.RUnlock()
+	} else {
+		chunkserver.chunksLock.RLock()
+		popped := make([]*chunkPriority, 0, number)
+		for i := 0; i < number || len(chunkserver.chunkQueue) > 0; i++ {
+			popped = append(popped, heap.Pop(&chunkserver.chunkQueue).(*chunkPriority))
+		}
+		for _, chunk := range popped {
+			putChunk(chunk.chunk)
+			chunk.count++
+			heap.Push(&chunkserver.chunkQueue, chunk)
+		}
+		chunkserver.chunksLock.RUnlock()
+	}
 	reply := gfs.HeartBeatReply{}
 	err := utils.RemoteCall(chunkserver.master, "Master.ReceiveHeartBeatRPC",
 		gfs.HeartBeatArgs{ServerInfo: chunkserver.server, Chunks: chunks},
@@ -147,6 +177,14 @@ func (chunkserver *Chunkserver) sendHeartBeat() error {
 	}
 	for _, chunkHandle := range reply.ExpiredChunks {
 		_ = chunkserver.removeChunkAndMeta(chunkHandle)
+	}
+	if reply.RequireAllChunks {
+		go func() {
+			err := chunkserver.sendHeartBeat(true)
+			if err != nil {
+				log.Println(err.Error())
+			}
+		}()
 	}
 	return nil
 }

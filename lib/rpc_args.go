@@ -14,5 +14,6 @@ type HeartBeatArgs struct {
 }
 
 type HeartBeatReply struct {
-	ExpiredChunks []ChunkHandle
+	ExpiredChunks    []ChunkHandle
+	RequireAllChunks bool
 }
