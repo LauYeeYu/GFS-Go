@@ -221,6 +221,10 @@ func (master *Master) AddNewCheckpoint(index int64) error {
 		_ = file.Close()
 		return err
 	}
+	if err = file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
 	_ = file.Close()
 
 	// Update the index file

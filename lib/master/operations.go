@@ -98,6 +98,10 @@ func (master *Master) writeLog(logIndex int64, log OperationLogEntryHeader, entr
 		_ = file.Close()
 		return err
 	}
+	if err = file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
 	_ = file.Close()
 	// Update the index file
 	return utils.WriteTextInt64ToFile(utils.MergePath(master.logDir, gfs.LogIndexName), logIndex)
