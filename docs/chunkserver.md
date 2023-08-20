@@ -17,7 +17,12 @@ orphan chunks.
 The master may grant a lease to the chunkserver or revoke it. If the
 chunkserver holds a lease, it is the primary replica for the chunk.
 
-The lease can be persisted in a file.
+The lease can be persisted in a file. But in this implementation, the
+lease is stored in memory. There are a couple of reasons:
+1. Persisting a lease only benefits when the chunkserver is restarted
+   soon (a lease timeout is typically 60 seconds). This case is rare.
+2. Saving the lease takes time and disk IO.
+3. Not persisting it makes almost no problem in terms of performance.
 
 ## Rejoin
 
