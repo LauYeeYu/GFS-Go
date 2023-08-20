@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"gfs"
 	"gfs/utils"
-	"log"
 	"net"
 	"net/rpc"
 	"os"
@@ -50,7 +49,7 @@ func MakeChunkserver(
 		chunks:     make(map[gfs.ChunkHandle]*Chunk),
 	}
 	if err := chunkserver.loadChunks(); err != nil {
-		log.Println(err.Error())
+		gfs.Log(gfs.Error, err.Error())
 		return nil
 	}
 	chunks := make([]*chunkPriority, 0, len(chunkserver.chunks))
@@ -64,7 +63,6 @@ func MakeChunkserver(
 func (chunkserver *Chunkserver) loadChunks() error {
 	files, err := os.ReadDir(chunkserver.chunksDir)
 	if err != nil {
-		log.Println(err.Error())
 		return err
 	}
 	for _, file := range files {
@@ -76,7 +74,7 @@ func (chunkserver *Chunkserver) loadChunks() error {
 			// The file is a chunk
 			handleInt, err := strconv.ParseInt(file.Name(), 10, 64)
 			if err != nil {
-				log.Println(err.Error())
+				gfs.Log(gfs.Error, err.Error())
 				continue
 			}
 			handle := gfs.ChunkHandle(handleInt)
@@ -93,12 +91,12 @@ func (chunkserver *Chunkserver) loadChunks() error {
 func (chunkserver *Chunkserver) Start() error {
 	service := rpc.NewServer()
 	if err := service.Register(chunkserver); err != nil {
-		log.Println(err.Error())
+		gfs.Log(gfs.Error, err.Error())
 		return errors.New("Master.Start: Register failed")
 	}
 	listener, err := net.Listen("tcp", chunkserver.server.ServerAddr)
 	if err != nil {
-		log.Println(err.Error())
+		gfs.Log(gfs.Error, err.Error())
 		return errors.New("Master.Start: Listen failed")
 	}
 	chunkserver.listener = listener
@@ -108,7 +106,7 @@ func (chunkserver *Chunkserver) Start() error {
 		for {
 			err := chunkserver.sendHeartBeat(false)
 			if err != nil {
-				log.Println(err.Error())
+				gfs.Log(gfs.Error, err.Error())
 			}
 			time.Sleep(gfs.HeartbeatInterval)
 		}
@@ -123,7 +121,7 @@ func (chunkserver *Chunkserver) handleAllRPCs() {
 	for {
 		conn, err := chunkserver.listener.Accept()
 		if err != nil {
-			log.Println(err.Error())
+			gfs.Log(gfs.Error, err.Error())
 			continue
 		}
 		go rpc.ServeConn(conn)
@@ -183,7 +181,7 @@ func (chunkserver *Chunkserver) sendHeartBeat(withAllChunks bool) error {
 		go func() {
 			err := chunkserver.sendHeartBeat(true)
 			if err != nil {
-				log.Println(err.Error())
+				gfs.Log(gfs.Error, err.Error())
 			}
 		}()
 	}

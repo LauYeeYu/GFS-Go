@@ -2,9 +2,9 @@ package master
 
 import (
 	"errors"
+	"fmt"
 	"gfs"
 	"gfs/utils"
-	"log"
 	"net"
 	"net/rpc"
 	"os"
@@ -54,7 +54,7 @@ func PrepareMaster(server gfs.ServerInfo, storageDir string) (*Master, error) {
 	checkpointDir := utils.MergePath(storageDir, gfs.CheckpointDirName)
 	checkpointIndexFileName := utils.MergePath(checkpointDir, gfs.CheckpointIndexName)
 	if utils.ExistFile(logIndexFileName) {
-		log.Println("Found log index file.")
+		gfs.Log(gfs.Info, "Found log index file.")
 	} else {
 		if err = os.MkdirAll(logDir, 0755); err != nil {
 			return nil, err
@@ -62,7 +62,7 @@ func PrepareMaster(server gfs.ServerInfo, storageDir string) (*Master, error) {
 		if err = utils.WriteTextInt64ToFile(logIndexFileName, 0); err != nil {
 			return nil, err
 		}
-		log.Println("Log index file not found. A new file has been created.")
+		gfs.Log(gfs.Info, "Log index file not found. A new file has been created.")
 	}
 	if err = os.MkdirAll(compressedLogDir, 0755); err != nil {
 		return nil, err
@@ -103,19 +103,20 @@ func MakeMaster(server gfs.ServerInfo, storageDir string) *Master {
 func (master *Master) Start() error {
 	service := rpc.NewServer()
 	if err := service.Register(master); err != nil {
-		log.Println(err.Error())
+		gfs.Log(gfs.Error, err.Error())
 		return errors.New("Master.Start: Register failed")
 	}
 	listener, err := net.Listen("tcp", master.server.ServerAddr)
 	if err != nil {
-		log.Println(err.Error())
+		gfs.Log(gfs.Error, err.Error())
 		return errors.New("Master.Start: Listen failed")
 	}
 	master.listener = listener
 	go master.handleAllRPCs()
 	go master.periodicCheck()
-	log.Printf("Master started. Listening on %v, root path: %v\n",
-		master.server.ServerAddr, master.storageDir)
+	gfs.Log(gfs.Info, fmt.Sprintf(
+		"Master started. Listening on %v, root path: %v",
+		master.server.ServerAddr, master.storageDir))
 	return nil
 }
 
@@ -138,7 +139,7 @@ func (master *Master) handleAllRPCs() {
 		}
 		conn, err := master.listener.Accept()
 		if err != nil {
-			log.Println(err.Error())
+			gfs.Log(gfs.Error, err.Error())
 			continue
 		}
 		go func() {

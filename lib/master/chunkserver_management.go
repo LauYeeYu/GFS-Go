@@ -2,9 +2,9 @@ package master
 
 import (
 	"errors"
+	"fmt"
 	"gfs"
 	"gfs/utils"
-	"log"
 	"sync"
 	"time"
 )
@@ -24,7 +24,7 @@ func (master *Master) ReceiveHeartBeatRPC(
 	master.chunkserversLock.Lock()
 	chunkServer, ok := master.chunkservers[args.ServerInfo]
 	if !ok {
-		log.Printf("New chunkserver %v joined\n", args.ServerInfo)
+		gfs.Log(gfs.Info, fmt.Sprintf("New chunkserver %v joined\n", args.ServerInfo))
 		master.chunkservers[args.ServerInfo] = &ChunkserverData{
 			LastSeen: time.Now(),
 			Chunks:   utils.MakeSet[gfs.ChunkHandle](),
@@ -42,13 +42,15 @@ func (master *Master) ReceiveHeartBeatRPC(
 		chunkMeta, existChunk := master.chunks[chunk.Handle]
 		if existChunk {
 			if chunk.Version < master.chunks[chunk.Handle].Version {
-				log.Printf("Chunk %v version %v is stale, ignore\n",
-					chunk.Handle, chunk.Version)
+				gfs.Log(gfs.Warning, fmt.Sprintf(
+					"Chunk %v version %v is stale, ignore",
+					chunk.Handle, chunk.Version))
 				expiredChunks = append(expiredChunks, chunk.Handle)
 				chunkMeta.removeChunkserver(args.ServerInfo)
 			} else if chunk.Version > master.chunks[chunk.Handle].Version {
-				log.Printf("Chunk %v version %v is newer, update\n",
-					chunk.Handle, chunk.Version)
+				gfs.Log(gfs.Info, fmt.Sprintf(
+					"Chunk %v version %v is newer, update",
+					chunk.Handle, chunk.Version))
 				chunkMeta.Version = chunk.Version
 				chunkMeta.Servers = utils.MakeSet[gfs.ServerInfo](gfs.ServerInfo{})
 				// No need to inform all chunkserver to remove this chunk, they will
@@ -57,7 +59,10 @@ func (master *Master) ReceiveHeartBeatRPC(
 				chunkMeta.addChunkserver(args.ServerInfo)
 			}
 		} else {
-			log.Printf("Chunk %v does not exist, ignore\n", chunk.Handle)
+			gfs.Log(
+				gfs.Warning,
+				fmt.Sprintf("Chunk %v does not exist, ignore", chunk.Handle),
+			)
 		}
 		master.chunksLock.Unlock()
 	}

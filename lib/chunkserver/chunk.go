@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"gfs"
 	"gfs/utils"
-	"log"
 	"os"
 	"strconv"
 	"sync"
@@ -61,32 +60,32 @@ func LoadChunkMetadata(
 	// Get the version
 	versionFile, err := os.Open(chunkVersionFilePath(handle, chunkserver))
 	if err != nil {
-		log.Println("Fail to open version file:", err.Error())
+		gfs.Log(gfs.Error, "Fail to open version file: ", err.Error())
 		return nil
 	}
 	version, err := strconv.ParseInt(versionFile.Name(), 10, 32)
 	if err != nil {
-		log.Println("Fail to parse version:", err.Error())
+		gfs.Log(gfs.Error, "Fail to parse version: ", err.Error())
 		return nil
 	}
 
 	// Get the checksum
 	checksumFile, err := os.Open(chunkChecksumFilePath(handle, chunkserver))
 	if err != nil {
-		log.Println("Fail to open version file:", err.Error())
+		gfs.Log(gfs.Error, "Fail to open version file: ", err.Error())
 		return nil
 	}
 	checksumInt, err := strconv.ParseInt(checksumFile.Name(), 10, 32)
 	checksum := Checksum(checksumInt)
 	if err != nil {
-		log.Println("Fail to parse checksum:", err.Error())
+		gfs.Log(gfs.Error, "Fail to parse checksum: ", err.Error())
 		return nil
 	}
 
 	// Get the chunk file
 	chunkFile, err := os.Open(chunkFilePath(handle, chunkserver))
 	if err != nil {
-		log.Println("Fail to open chunk file:", err.Error())
+		gfs.Log(gfs.Error, "Fail to open chunk file: ", err.Error())
 		return nil
 	}
 	chunk := Chunk{
@@ -98,11 +97,11 @@ func LoadChunkMetadata(
 	}
 	chunkData, err := chunk.read()
 	if err != nil {
-		log.Println("Fail to read chunk:", err.Error())
+		gfs.Log(gfs.Error, "Fail to read chunk:", err.Error())
 		return nil
 	}
 	if !chunk.checksum.Check(chunkData) {
-		log.Println("Checksum mismatch")
+		gfs.Log(gfs.Error, "Checksum mismatch")
 		chunk.removeChunk(chunkserver)
 		return nil
 	}

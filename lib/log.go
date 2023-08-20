@@ -18,10 +18,10 @@ func SetLogLevel(level int) {
 	logLevel = level
 }
 
-func Log(level int, msg string) {
+func Log(level int, args ...any) {
 	lock.Lock()
 	if level >= logLevel {
-		log.Println(msg)
+		log.Println(args...)
 	}
 	lock.Unlock()
 }
