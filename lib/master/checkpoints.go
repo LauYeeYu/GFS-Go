@@ -61,7 +61,7 @@ func (data *PersistentChunkMetadata) toChunkMetadata() *ChunkMetadata {
 	return &ChunkMetadata{
 		Version:     data.Version,
 		RefCount:    data.RefCount,
-		LeaseHolder: data.LeaseHolder,
+		Leaseholder: data.LeaseHolder,
 		LeaseExpire: data.LeaseExpire,
 		Servers:     utils.MakeSet[gfs.ServerInfo](),
 	}
@@ -110,7 +110,7 @@ func (chunkMeta *ChunkMetadata) getPersistentChunkMeta() PersistentChunkMetadata
 	return PersistentChunkMetadata{
 		Version:     chunkMeta.Version,
 		RefCount:    chunkMeta.RefCount,
-		LeaseHolder: chunkMeta.LeaseHolder,
+		LeaseHolder: chunkMeta.Leaseholder,
 		LeaseExpire: chunkMeta.LeaseExpire,
 	}
 }

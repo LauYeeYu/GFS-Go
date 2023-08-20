@@ -32,8 +32,8 @@ type OperationLogEntryHeader struct {
 	Operation int
 }
 
-func MakeOperationLogEntryHeader(operation int) *OperationLogEntryHeader {
-	return &OperationLogEntryHeader{
+func MakeOperationLogEntryHeader(operation int) OperationLogEntryHeader {
+	return OperationLogEntryHeader{
 		Time:      time.Now(),
 		Operation: operation,
 	}
@@ -379,7 +379,7 @@ func (entry *AddChunkToFileOperationLogEntry) addChunkToFile(master *Master) (*C
 		chunk = &ChunkMetadata{
 			Version:     0,
 			RefCount:    1,
-			LeaseHolder: nil,
+			Leaseholder: nil,
 			LeaseExpire: time.Now(),
 			Servers:     utils.MakeSet[gfs.ServerInfo](),
 		}
@@ -392,18 +392,43 @@ func (entry *AddChunkToFileOperationLogEntry) addChunkToFile(master *Master) (*C
 }
 
 type GrantLeaseOperationLogEntry struct {
-	Chunk       gfs.ChunkHandle
-	LeaseHolder gfs.ServerInfo
-	LeaseExpire time.Time
+	Chunk          gfs.ChunkHandle
+	Leaseholder    gfs.ServerInfo
+	LeaseGrantTime time.Time
+	LeaseExpire    time.Time
+	Override       bool // if true, force override the existing lease
 }
 
 func (entry *GrantLeaseOperationLogEntry) Execute(master *Master) error {
-	//TODO
-	return nil
+	err := entry.Replay(master)
+	if err != nil {
+		return err
+	}
+	return master.sendLease(gfs.GrantLeaseArgs{
+		ServerInfo:  entry.Leaseholder,
+		ChunkHandle: entry.Chunk,
+		LeaseExpire: entry.LeaseExpire,
+	})
 }
 
 func (entry *GrantLeaseOperationLogEntry) Replay(master *Master) error {
-	//TODO
+	master.chunksLock.Lock()
+	chunk, ok := master.chunks[entry.Chunk]
+	master.chunksLock.Unlock()
+	if !ok {
+		return errors.New("chunk not found")
+	}
+	chunk.Lock()
+	defer chunk.Unlock()
+	if !entry.Override &&
+		chunk.Leaseholder != nil && chunk.LeaseExpire.After(entry.LeaseGrantTime) {
+		return errors.New("lease already granted")
+	}
+	chunk.Leaseholder = &gfs.ServerInfo{
+		ServerType: entry.Leaseholder.ServerType,
+		ServerAddr: entry.Leaseholder.ServerAddr,
+	}
+	chunk.LeaseExpire = entry.LeaseExpire
 	return nil
 }
 

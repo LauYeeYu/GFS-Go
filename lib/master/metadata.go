@@ -41,7 +41,7 @@ type ChunkMetadata struct {
 	// Persistent data
 	Version     gfs.ChunkVersion
 	RefCount    int64
-	LeaseHolder *gfs.ServerInfo
+	Leaseholder *gfs.ServerInfo
 	LeaseExpire time.Time
 
 	// In-memory data
@@ -489,26 +489,4 @@ func (chunkMeta *ChunkMetadata) removeChunkserver(server gfs.ServerInfo) {
 	chunkMeta.Lock()
 	defer chunkMeta.Unlock()
 	chunkMeta.Servers.Remove(server)
-}
-
-func (chunkMeta *ChunkMetadata) addChunkserver(server gfs.ServerInfo) {
-	chunkMeta.Lock()
-	defer chunkMeta.Unlock()
-	chunkMeta.Servers.Add(server)
-}
-
-func (master *Master) reduceChunkRef(chunk gfs.ChunkHandle) error {
-	master.chunksLock.Lock()
-	defer master.chunksLock.Unlock()
-	chunkMeta, ok := master.chunks[chunk]
-	if !ok {
-		return errors.New(fmt.Sprintf("chunk %d does not exist", chunk))
-	}
-	chunkMeta.Lock()
-	defer chunkMeta.Unlock()
-	chunkMeta.RefCount--
-	if chunkMeta.RefCount == 0 {
-		delete(master.chunks, chunk)
-	}
-	return nil
 }

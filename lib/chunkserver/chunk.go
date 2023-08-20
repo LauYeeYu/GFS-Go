@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 )
 
 type Chunk struct {
@@ -16,6 +17,11 @@ type Chunk struct {
 	handle    gfs.ChunkHandle
 	chunkFile *os.File // stored in $storageDir/chunks/$handle
 	checksum  Checksum // stored in $storageDir/chunks/$handle.checksum
+
+	// Lease control
+	isPrimary       bool
+	leaseExpireTime time.Time
+
 	sync.RWMutex
 }
 
@@ -88,6 +94,7 @@ func LoadChunkMetadata(
 		handle:    handle,
 		chunkFile: chunkFile,
 		checksum:  checksum,
+		isPrimary: false,
 	}
 	chunkData, err := chunk.read()
 	if err != nil {

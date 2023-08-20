@@ -1,5 +1,7 @@
 package gfs
 
+import "time"
+
 // HeartBeats
 
 type ChunkInfo struct {
@@ -16,4 +18,26 @@ type HeartBeatArgs struct {
 type HeartBeatReply struct {
 	ExpiredChunks    []ChunkHandle
 	RequireAllChunks bool
+}
+
+type GrantLeaseArgs struct {
+	ServerInfo  ServerInfo
+	ChunkHandle ChunkHandle
+	LeaseExpire time.Time
+}
+
+type GrantLeaseReply struct {
+	Accepted bool
+}
+
+type UpdateChunkArgs struct {
+	ServerInfo      ServerInfo
+	ChunkHandle     ChunkHandle
+	OriginalVersion ChunkVersion
+	NewVersion      ChunkVersion
+}
+
+type UpdateChunkReply struct {
+	Accepted       bool
+	CurrentVersion ChunkVersion // -1 if not exist
 }
