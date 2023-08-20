@@ -396,6 +396,7 @@ type GrantLeaseOperationLogEntry struct {
 	Leaseholder    gfs.ServerInfo
 	LeaseGrantTime time.Time
 	LeaseExpire    time.Time
+	Version        gfs.ChunkVersion
 	Override       bool // if true, force override the existing lease
 }
 
@@ -429,6 +430,7 @@ func (entry *GrantLeaseOperationLogEntry) Replay(master *Master) error {
 		ServerAddr: entry.Leaseholder.ServerAddr,
 	}
 	chunk.LeaseExpire = entry.LeaseExpire
+	chunk.Version = entry.Version
 	return nil
 }
 

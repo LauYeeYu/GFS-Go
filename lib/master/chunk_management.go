@@ -46,6 +46,8 @@ func (master *Master) grantLease(chunkHandle gfs.ChunkHandle) error {
 	}
 
 	// Inform all chunkservers to update the lease
+	chunk.LeaseLock.Lock()
+	defer chunk.LeaseLock.Unlock()
 	chunk.RLock()
 	servers := make(map[gfs.ServerInfo]*ChunkserverData)
 	for server := range chunk.Servers {
@@ -123,14 +125,16 @@ func (master *Master) grantLease(chunkHandle gfs.ChunkHandle) error {
 	// Send lease to the leaseholder
 	// In current implementation, we only grant lease once
 	now := time.Now()
-	return master.appendLog(
+	err := master.appendLog(
 		MakeOperationLogEntryHeader(GrantLeaseOperation),
 		&GrantLeaseOperationLogEntry{
 			Chunk:          chunkHandle,
 			Leaseholder:    leaseholder,
 			LeaseGrantTime: now,
 			LeaseExpire:    now.Add(gfs.LeaseTimeout),
+			Version:        version + 1,
 			Override:       false,
 		},
 	)
+	return err
 }

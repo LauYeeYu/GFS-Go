@@ -44,6 +44,8 @@ type ChunkMetadata struct {
 	Leaseholder *gfs.ServerInfo
 	LeaseExpire time.Time
 
+	LeaseLock sync.Mutex // To avoid two goroutines renewing the lease at the same time
+
 	// In-memory data
 	Servers utils.Set[gfs.ServerInfo] // initialized with HeartBeat
 }
