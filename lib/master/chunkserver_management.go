@@ -30,8 +30,10 @@ func (master *Master) ReceiveHeartBeatRPC(
 			Chunks:   utils.MakeSet[gfs.ChunkHandle](),
 			Lease:    make(map[gfs.ChunkHandle]time.Time),
 		}
+		reply.RequireAllChunks = true
 	} else {
 		chunkServer.LastSeen = time.Now()
+		reply.RequireAllChunks = false
 	}
 	master.chunkserversLock.Unlock()
 
