@@ -53,7 +53,16 @@ func (master *Master) ReceiveHeartBeatRPC(
 				gfs.Log(gfs.Info, fmt.Sprintf(
 					"Chunk %v version %v is newer, update",
 					chunk.Handle, chunk.Version))
-				chunkMeta.Version = chunk.Version
+				err := master.appendLog(
+					MakeOperationLogEntryHeader(UpdateChunkVersionOperation),
+					&UpdateChunkVersionOperationLogEntry{
+						Chunk:      chunk.Handle,
+						NewVersion: chunk.Version,
+					},
+				)
+				if err != nil {
+					gfs.Log(gfs.Error, err.Error())
+				}
 				chunkMeta.Servers = utils.MakeSet[gfs.ServerInfo](gfs.ServerInfo{})
 				// No need to inform all chunkserver to remove this chunk, they will
 				// do it automatically through heartbeat

@@ -124,19 +124,30 @@ func (master *Master) grantLease(chunkHandle gfs.ChunkHandle) error {
 		}
 	}
 
+	// Increment the chunk version
+	err := master.appendLog(
+		MakeOperationLogEntryHeader(IncrementChunkVersionOperation),
+		&IncrementChunkVersionOperationLogEntry{chunkHandle},
+	)
+	if err != nil {
+		return err
+	}
+
 	// Send lease to the leaseholder
 	// In current implementation, we only grant lease once
+	chunk.Lock()
 	now := time.Now()
-	err := master.appendLog(
-		MakeOperationLogEntryHeader(GrantLeaseOperation),
-		&GrantLeaseOperationLogEntry{
-			Chunk:          chunkHandle,
-			Leaseholder:    leaseholder,
-			LeaseGrantTime: now,
-			LeaseExpire:    now.Add(gfs.LeaseTimeout),
-			Version:        version + 1,
-			Override:       false,
-		},
-	)
-	return err
+	expire := now.Add(gfs.LeaseTimeout)
+	if chunk.hasLeaseHolder() {
+		chunk.Unlock()
+		return nil
+	}
+	chunk.Leaseholder = &leaseholder
+	chunk.LeaseExpire = expire
+	chunk.Unlock()
+	return master.sendLease(gfs.GrantLeaseArgs{
+		ServerInfo:  leaseholder,
+		ChunkHandle: chunkHandle,
+		LeaseExpire: expire,
+	})
 }

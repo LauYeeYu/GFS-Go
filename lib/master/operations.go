@@ -22,9 +22,9 @@ const (
 	SnapshotOperation
 	AddChunkToFile
 
-	// For leases
-	GrantLeaseOperation
-	RevokeLeaseOperation
+	// For chunks
+	UpdateChunkVersionOperation
+	IncrementChunkVersionOperation
 )
 
 type OperationLogEntryHeader struct {
@@ -166,14 +166,14 @@ func (master *Master) replayLog(logIndex int64) error {
 			return err
 		}
 		_ = entry.Replay(master)
-	case GrantLeaseOperation:
-		var entry GrantLeaseOperationLogEntry
+	case UpdateChunkVersionOperation:
+		var entry UpdateChunkVersionOperationLogEntry
 		if err = decoder.Decode(&entry); err != nil {
 			return err
 		}
 		_ = entry.Replay(master)
-	case RevokeLeaseOperation:
-		var entry RevokeLeaseOperationLogEntry
+	case IncrementChunkVersionOperation:
+		var entry IncrementChunkVersionOperationLogEntry
 		if err = decoder.Decode(&entry); err != nil {
 			return err
 		}
@@ -391,28 +391,12 @@ func (entry *AddChunkToFileOperationLogEntry) addChunkToFile(master *Master) (*C
 	return chunk, nil
 }
 
-type GrantLeaseOperationLogEntry struct {
-	Chunk          gfs.ChunkHandle
-	Leaseholder    gfs.ServerInfo
-	LeaseGrantTime time.Time
-	LeaseExpire    time.Time
-	Version        gfs.ChunkVersion
-	Override       bool // if true, force override the existing lease
+type UpdateChunkVersionOperationLogEntry struct {
+	Chunk      gfs.ChunkHandle
+	NewVersion gfs.ChunkVersion
 }
 
-func (entry *GrantLeaseOperationLogEntry) Execute(master *Master) error {
-	err := entry.Replay(master)
-	if err != nil {
-		return err
-	}
-	return master.sendLease(gfs.GrantLeaseArgs{
-		ServerInfo:  entry.Leaseholder,
-		ChunkHandle: entry.Chunk,
-		LeaseExpire: entry.LeaseExpire,
-	})
-}
-
-func (entry *GrantLeaseOperationLogEntry) Replay(master *Master) error {
+func (entry *UpdateChunkVersionOperationLogEntry) Execute(master *Master) error {
 	master.chunksLock.Lock()
 	chunk, ok := master.chunks[entry.Chunk]
 	master.chunksLock.Unlock()
@@ -421,29 +405,34 @@ func (entry *GrantLeaseOperationLogEntry) Replay(master *Master) error {
 	}
 	chunk.Lock()
 	defer chunk.Unlock()
-	if !entry.Override &&
-		chunk.Leaseholder != nil && chunk.LeaseExpire.After(entry.LeaseGrantTime) {
-		return errors.New("lease already granted")
+	if chunk.Version >= entry.NewVersion {
+		return errors.New("invalid version")
 	}
-	chunk.Leaseholder = &gfs.ServerInfo{
-		ServerType: entry.Leaseholder.ServerType,
-		ServerAddr: entry.Leaseholder.ServerAddr,
-	}
-	chunk.LeaseExpire = entry.LeaseExpire
-	chunk.Version = entry.Version
+	chunk.Version = entry.NewVersion
 	return nil
 }
 
-type RevokeLeaseOperationLogEntry struct {
+func (entry *UpdateChunkVersionOperationLogEntry) Replay(master *Master) error {
+	return entry.Execute(master)
+}
+
+type IncrementChunkVersionOperationLogEntry struct {
 	Chunk gfs.ChunkHandle
 }
 
-func (entry *RevokeLeaseOperationLogEntry) Execute(master *Master) error {
-	//TODO
+func (entry *IncrementChunkVersionOperationLogEntry) Execute(master *Master) error {
+	master.chunksLock.Lock()
+	chunk, ok := master.chunks[entry.Chunk]
+	master.chunksLock.Unlock()
+	if !ok {
+		return errors.New("chunk not found")
+	}
+	chunk.Lock()
+	chunk.Version++
+	chunk.Unlock()
 	return nil
 }
 
-func (entry *RevokeLeaseOperationLogEntry) Replay(master *Master) error {
-	//TODO
-	return nil
+func (entry *IncrementChunkVersionOperationLogEntry) Replay(master *Master) error {
+	return entry.Execute(master)
 }
