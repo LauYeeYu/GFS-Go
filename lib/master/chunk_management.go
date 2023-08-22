@@ -15,9 +15,11 @@ func (chunkMeta *ChunkMetadata) addChunkserver(server gfs.ServerInfo) {
 	chunkMeta.Servers.Add(server)
 }
 
+// hasLeaseHolder returns true if the chunk has a leaseholder and the lease
+// has not expired.
+// Note: this function does not lock the chunkMeta, so it should be called
+// with chunkMeta.Lock() held.
 func (chunkMeta *ChunkMetadata) hasLeaseHolder() bool {
-	chunkMeta.Lock()
-	defer chunkMeta.Unlock()
 	return chunkMeta.Leaseholder != nil && chunkMeta.LeaseExpire.After(time.Now())
 }
 

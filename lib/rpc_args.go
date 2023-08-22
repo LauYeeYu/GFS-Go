@@ -41,3 +41,13 @@ type UpdateChunkReply struct {
 	Accepted       bool
 	CurrentVersion ChunkVersion // -1 if not exist
 }
+
+type ExtendLeaseArgs struct {
+	ServerInfo  ServerInfo
+	ChunkHandle ChunkHandle
+}
+
+type ExtendLeaseReply struct {
+	Accepted  bool
+	NewExpire time.Time
+}

@@ -90,10 +90,43 @@ func (master *Master) sendLease(args gfs.GrantLeaseArgs) error {
 	return nil
 }
 
+// flushLease removes expired lease
 func (chunkserverData *ChunkserverData) flushLease() {
 	for chunk, expire := range chunkserverData.Lease {
 		if expire.Before(time.Now()) {
 			delete(chunkserverData.Lease, chunk)
 		}
 	}
+}
+
+func (master *Master) ExtendLeaseRPC(
+	args gfs.ExtendLeaseArgs,
+	reply *gfs.ExtendLeaseReply,
+) error {
+	chunkserverData, ok := master.chunkservers[args.ServerInfo]
+	master.chunkserversLock.Unlock()
+	if !ok {
+		return errors.New("Master.ExtendLease: chunkserver not found")
+	}
+	master.chunksLock.Lock()
+	chunk, ok := master.chunks[args.ChunkHandle]
+	master.chunksLock.Unlock()
+	if !ok {
+		return errors.New("Master.ExtendLease: chunk not found")
+	}
+	chunk.Lock()
+	chunkserverData.Lock()
+	if !chunk.hasLeaseHolder() || chunk.Leaseholder == nil ||
+		*chunk.Leaseholder != args.ServerInfo {
+		reply.Accepted = false
+	} else {
+		newExpire := time.Now().Add(gfs.LeaseTimeout)
+		chunkserverData.Lease[args.ChunkHandle] = newExpire
+		reply.Accepted = true
+		reply.NewExpire = newExpire
+		chunk.LeaseExpire = newExpire
+	}
+	chunkserverData.Unlock()
+	chunk.Unlock()
+	return nil
 }

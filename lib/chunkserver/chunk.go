@@ -53,6 +53,16 @@ func (chunk *Chunk) read() ([]byte, error) {
 	return data, nil
 }
 
+// flushLease flushes the lease status of the chunk
+// Note: this function is not concurrency-safe.
+func (chunk *Chunk) flushLease() {
+	if chunk.isPrimary {
+		if chunk.leaseExpireTime.Before(time.Now()) {
+			chunk.isPrimary = false
+		}
+	}
+}
+
 func LoadChunkMetadata(
 	handle gfs.ChunkHandle,
 	chunkserver *Chunkserver,
@@ -88,7 +98,7 @@ func LoadChunkMetadata(
 		gfs.Log(gfs.Error, "Fail to open chunk file: ", err.Error())
 		return nil
 	}
-	chunk := Chunk{
+	chunk := &Chunk{
 		version:   gfs.ChunkVersion(version),
 		handle:    handle,
 		chunkFile: chunkFile,
@@ -105,7 +115,7 @@ func LoadChunkMetadata(
 		chunk.removeChunk(chunkserver)
 		return nil
 	}
-	return &chunk
+	return chunk
 }
 
 // removeChunk removes the chunk from the chunkserver.
