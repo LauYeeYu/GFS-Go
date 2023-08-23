@@ -154,12 +154,20 @@ that
 3. memory efficiency is no longer a important thing nowadays;
 4. This provides more functions concerned with the directory structure.
 
+
 ### Lease Management
 
-Whenever the master grant a new lease to a chunkserver, it increments the
-version number. However, if the master commits the operation log before
-letting the chunkservers know the new version number, a fatal problem may
-occur.
+We do not log the lease operation.
+
+The first reason is that, if we log all lease operation, there might be a
+significant performance drop. Not logging these operation will avoid that.
+This seems to be not fault-tolerant anymore, but we notice that a lease
+will usually expire sooner than the master comes back to operation.
+
+Another reason is about the chunk version. Whenever the master grant a
+new lease to a chunkserver, it increments the version number. However,
+if the master commits the operation log before letting the chunkservers
+know the new version number, a fatal problem may occur.
 
 Consider the following scenario:
 A master grants a new lease to a chunkserver. It has committed the log first
@@ -171,10 +179,3 @@ chunk.
 
 I think the vanilla GFS uses a more complicated operation log to avoid this
 problem by using transaction.
-
-I found another mitigation for this problem by informing the chunkservers to
-increment the version number before committing the log. This breaks the
-fact that everything is done after the log is committed, though. But its
-correctness is guaranteed because after the master recovers, it will
-receive the *HeartBeat* from the chunkservers and know the new version
-number.
