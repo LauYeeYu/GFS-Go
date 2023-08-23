@@ -3,8 +3,8 @@ package utils
 import "container/list"
 
 type UnlimitedBufferedChannel[T any] struct {
-	in     chan<- T
-	out    <-chan T
+	In     chan<- T
+	Out    <-chan T
 	buffer list.List
 }
 
@@ -12,8 +12,8 @@ func MakeUnlimitedBufferedChannel[T any](initBufferSize int) *UnlimitedBufferedC
 	in := make(chan T, initBufferSize)
 	out := make(chan T, initBufferSize)
 	channel := &UnlimitedBufferedChannel[T]{
-		in:     in,
-		out:    out,
+		In:     in,
+		Out:    out,
 		buffer: list.List{},
 	}
 	channel.buffer.Init()
@@ -21,7 +21,7 @@ func MakeUnlimitedBufferedChannel[T any](initBufferSize int) *UnlimitedBufferedC
 	loop:
 		for {
 			val, ok := <-in
-			if !ok { // If in has been closed, exit loop
+			if !ok { // If In has been closed, exit loop
 				break loop
 			}
 			// out is not full
@@ -36,7 +36,7 @@ func MakeUnlimitedBufferedChannel[T any](initBufferSize int) *UnlimitedBufferedC
 			for channel.buffer.Len() > 0 {
 				select {
 				case val, ok := <-in:
-					if !ok { // If in has been closed, exit loop
+					if !ok { // If In has been closed, exit loop
 						break loop
 					}
 					channel.buffer.PushBack(val)
@@ -55,5 +55,5 @@ func MakeUnlimitedBufferedChannel[T any](initBufferSize int) *UnlimitedBufferedC
 }
 
 func (channel *UnlimitedBufferedChannel[T]) Close() {
-	close(channel.in)
+	close(channel.In)
 }
