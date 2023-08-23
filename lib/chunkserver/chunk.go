@@ -21,7 +21,38 @@ type Chunk struct {
 	isPrimary       bool
 	leaseExpireTime time.Time
 
+	WriteChannel utils.UnlimitedBufferedChannel[*WriteRequest]
+	chunkserver  *Chunkserver
+
 	sync.RWMutex
+}
+
+// MakeChunk creates a new Chunk instance and start a
+// background goroutine to handle all kinds of write requests.
+// This function assumes that the server is not the primary.
+func MakeChunk(
+	version gfs.ChunkVersion,
+	handle gfs.ChunkHandle,
+	chunkFile *os.File,
+	checksum Checksum,
+	chunkserver *Chunkserver,
+) *Chunk {
+	chunk := Chunk{
+		version:      version,
+		handle:       handle,
+		chunkFile:    chunkFile,
+		checksum:     checksum,
+		isPrimary:    false,
+		WriteChannel: utils.MakeUnlimitedBufferedChannel[*WriteRequest](16),
+		chunkserver:  chunkserver,
+	}
+	go func() {
+		for {
+			request := <-chunk.WriteChannel.Out
+			chunk.handleWriteRequest(request)
+		}
+	}()
+	return &chunk
 }
 
 func chunkFilePath(handle gfs.ChunkHandle, chunkserver *Chunkserver) string {
@@ -98,13 +129,7 @@ func LoadChunkMetadata(
 		gfs.Log(gfs.Error, "Fail to open chunk file: ", err.Error())
 		return nil
 	}
-	chunk := &Chunk{
-		version:   gfs.ChunkVersion(version),
-		handle:    handle,
-		chunkFile: chunkFile,
-		checksum:  checksum,
-		isPrimary: false,
-	}
+	chunk := MakeChunk(gfs.ChunkVersion(version), handle, chunkFile, checksum, chunkserver)
 	chunkData, err := chunk.read()
 	if err != nil {
 		gfs.Log(gfs.Error, "Fail to read chunk:", err.Error())
@@ -154,6 +179,16 @@ func (chunk *Chunk) rangedRead(offset gfs.Length, data []byte) error {
 }
 
 func (chunk *Chunk) internalRangedWrite(offset gfs.Length, data []byte) error {
+	chunkLength := chunk.length()
+	if offset < 0 || offset+gfs.Length(len(data)) > gfs.ChunkSize {
+		return errors.New(fmt.Sprintf("write data (%v-%v) out of range (0-%v)",
+			offset, offset+gfs.Length(len(data)), chunkLength))
+	}
+	if offset+gfs.Length(len(data)) > chunkLength {
+		if err := chunk.padChunk(offset + gfs.Length(len(data))); err != nil {
+			return err
+		}
+	}
 	fileOffset, err := chunk.chunkFile.Seek(int64(offset), 0)
 	if err != nil {
 		return gfs.NewFatalError(err)
@@ -169,7 +204,7 @@ func (chunk *Chunk) internalRangedWrite(offset gfs.Length, data []byte) error {
 // rangedWrite writes data to the chunk at the given offset.
 // Any error should be regarded as a data corruption.
 // Note: this function is not concurrency-safe, the caller should hold the lock.
-func (chunk *Chunk) rangedWrite(offset gfs.Length, data []byte, storagePath string) error {
+func (chunk *Chunk) rangedWrite(offset gfs.Length, data []byte) error {
 	end := offset + gfs.Length(len(data))
 	chunkLength := chunk.length()
 	if offset < 0 || end > gfs.ChunkSize {
@@ -180,57 +215,46 @@ func (chunk *Chunk) rangedWrite(offset gfs.Length, data []byte, storagePath stri
 	if err != nil {
 		return err
 	}
-	return chunk.checksum.Update(chunk.chunkFile, checksumPath(storagePath, chunk.handle))
+	return chunk.checksum.Update(chunk.chunkFile,
+		checksumPath(chunk.chunkserver.chunksDir, chunk.handle))
 }
 
 // padChunkTo pads the chunk to the given offset. Any error should be regarded
 // as a data corruption.
 // Note: this function is not concurrency-safe, the caller should hold the lock.
-func (chunk *Chunk) padChunkTo(offset gfs.Length, storagePath string) error {
+func (chunk *Chunk) padChunkTo(offset gfs.Length) error {
 	if offset > gfs.ChunkSize {
 		return errors.New(fmt.Sprintf("cannot pad chunk to offset %v", offset))
 	}
 	if err := chunk.chunkFile.Truncate(int64(offset)); err != nil {
 		return gfs.NewFatalError(err)
 	}
-	return chunk.checksum.Update(chunk.chunkFile, checksumPath(storagePath, chunk.handle))
+	return chunk.checksum.Update(chunk.chunkFile,
+		checksumPath(chunk.chunkserver.chunksDir, chunk.handle))
 }
 
-func (chunk *Chunk) padChunk(length gfs.Length, storagePath string) error {
-	return chunk.padChunkTo(chunk.length()+length, storagePath)
+func (chunk *Chunk) padChunk(length gfs.Length) error {
+	return chunk.padChunkTo(chunk.length() + length)
 }
 
 // append appends data to the chunk.
 // Any error should be regarded as a data corruption.
+// Return the error and whether the operation exceeds the chunk size.
 // Note: this function is not concurrency-safe, the caller should hold the lock.
-func (chunk *Chunk) append(data []byte, storagePath string) error {
+func (chunk *Chunk) append(data []byte) (gfs.Length, error, bool) {
 	originalLength := chunk.length()
 	if originalLength+gfs.Length(len(data)) > gfs.ChunkSize {
-		err := chunk.padChunk(gfs.Length(len(data)), storagePath)
-		if err != nil {
-			return err
-		}
+		err := chunk.padChunk(gfs.Length(len(data)))
+		return -1, err, true
 	}
 	err := chunk.internalRangedWrite(originalLength, data)
 	if err != nil {
-		return err
+		return -1, err, false
 	}
-	return chunk.checksum.Update(chunk.chunkFile, checksumPath(storagePath, chunk.handle))
-}
-
-// appendFrom appends data to the chunk from the given offset.
-// Any error should be regarded as a data corruption.
-// Note: this function is not concurrency-safe, the caller should hold the lock.
-func (chunk *Chunk) appendFrom(offset gfs.Length, data []byte, storagePath string) error {
-	if offset+gfs.Length(len(data)) > gfs.ChunkSize {
-		err := chunk.padChunk(offset+gfs.Length(len(data)), storagePath)
-		if err != nil {
-			return err
-		}
-	}
-	err := chunk.internalRangedWrite(offset, data)
+	err = chunk.checksum.Update(chunk.chunkFile,
+		checksumPath(chunk.chunkserver.chunksDir, chunk.handle))
 	if err != nil {
-		return err
+		return -1, err, false
 	}
-	return chunk.checksum.Update(chunk.chunkFile, checksumPath(storagePath, chunk.handle))
+	return originalLength, nil, false
 }

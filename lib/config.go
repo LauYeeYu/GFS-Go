@@ -15,7 +15,8 @@ const (
 	PeriodicWorkInterval = 60 * time.Second        // 60s
 	HeartbeatInterval    = 200 * time.Millisecond  // 200ms
 	HeartbeatTimeout     = 1000 * time.Millisecond // 1s
-	LeaseTimeout         = 5 * time.Second         // 5s
+	LeaseTimeout         = 60 * time.Second        // 5s
+	LeaseExtendBefore    = 1 * time.Second         // 1s
 )
 
 // Constant strings for master
