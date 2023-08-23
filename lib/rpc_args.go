@@ -51,3 +51,12 @@ type ExtendLeaseReply struct {
 	Accepted  bool
 	NewExpire time.Time
 }
+
+type RevokeLeaseArgs struct {
+	ServerInfo  ServerInfo
+	ChunkHandle ChunkHandle
+}
+
+type RevokeLeaseReply struct {
+	Accepted bool
+}

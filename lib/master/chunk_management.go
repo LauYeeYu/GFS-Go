@@ -151,3 +151,46 @@ func (master *Master) grantLease(chunkHandle gfs.ChunkHandle) error {
 		LeaseExpire: expire,
 	})
 }
+
+func (master *Master) revokeLease(chunkHandle gfs.ChunkHandle) error {
+	master.chunksLock.Lock()
+	defer master.chunksLock.Unlock()
+	chunk, ok := master.chunks[chunkHandle]
+	if !ok {
+		return errors.New(fmt.Sprintf("chunk %d does not exist", chunkHandle))
+	}
+	chunk.Lock()
+	if !chunk.hasLeaseHolder() {
+		return nil
+	}
+	leaseholder := *chunk.Leaseholder
+	chunk.Unlock()
+	reply := gfs.RevokeLeaseReply{}
+	err := utils.RemoteCall(leaseholder, "ChunkServer.RevokeLeaseRPC",
+		gfs.RevokeLeaseArgs{
+			ServerInfo:  leaseholder,
+			ChunkHandle: chunkHandle,
+		},
+		&reply,
+	)
+	if err != nil {
+		return err
+	}
+	if !reply.Accepted {
+		return errors.New("Master.revokeLease: lease not accepted")
+	}
+	chunk.Lock()
+	chunk.Leaseholder = nil
+	chunk.Unlock()
+	master.chunkserversLock.Lock()
+	chunkserver := master.chunkservers[leaseholder]
+	master.chunkserversLock.Unlock()
+	chunkserver.Lock()
+	// To avoid removing the lease twice, we check if the lease is still
+	// held by the chunkserver recorded in the master
+	if _, ok := chunkserver.Lease[chunkHandle]; ok {
+		delete(chunkserver.Lease, chunkHandle)
+	}
+	chunkserver.Unlock()
+	return nil
+}

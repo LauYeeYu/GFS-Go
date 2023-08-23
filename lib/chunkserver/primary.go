@@ -67,3 +67,21 @@ func (chunk *Chunk) extendLease(chunkserver *Chunkserver) error {
 		return nil
 	}
 }
+
+func (chunkserver *Chunkserver) RevokeLeaseRPC(
+	args gfs.RevokeLeaseArgs,
+	reply *gfs.RevokeLeaseReply,
+) error {
+	chunkserver.chunksLock.Lock()
+	chunk, exist := chunkserver.chunks[args.ChunkHandle]
+	chunkserver.chunksLock.Unlock()
+	if !exist {
+		reply.Accepted = false
+		return errors.New("Chunkserver.RevokeLeaseRPC: chunk not found")
+	}
+	chunk.Lock()
+	chunk.isPrimary = false
+	chunk.Unlock()
+	reply.Accepted = true
+	return nil
+}
