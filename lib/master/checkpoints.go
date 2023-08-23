@@ -7,7 +7,6 @@ import (
 	"gfs"
 	"gfs/utils"
 	"os"
-	"time"
 )
 
 type Checkpoint struct {
@@ -23,10 +22,8 @@ type PersistentNamespaceMetadata struct {
 }
 
 type PersistentChunkMetadata struct {
-	Version     gfs.ChunkVersion
-	RefCount    int64
-	LeaseHolder *gfs.ServerInfo
-	LeaseExpire time.Time
+	Version  gfs.ChunkVersion
+	RefCount int64
 }
 
 func (dir *DirectoryInfo) addFileWithoutLock(fileName []string, chunks FileChunks) {
@@ -61,8 +58,7 @@ func (data *PersistentChunkMetadata) toChunkMetadata() *ChunkMetadata {
 	return &ChunkMetadata{
 		Version:     data.Version,
 		RefCount:    data.RefCount,
-		Leaseholder: data.LeaseHolder,
-		LeaseExpire: data.LeaseExpire,
+		Leaseholder: nil,
 		Servers:     utils.MakeSet[gfs.ServerInfo](),
 	}
 }
@@ -108,10 +104,8 @@ func (dir *DirectoryInfo) putAllFilesTogether(
 
 func (chunkMeta *ChunkMetadata) getPersistentChunkMeta() PersistentChunkMetadata {
 	return PersistentChunkMetadata{
-		Version:     chunkMeta.Version,
-		RefCount:    chunkMeta.RefCount,
-		LeaseHolder: chunkMeta.Leaseholder,
-		LeaseExpire: chunkMeta.LeaseExpire,
+		Version:  chunkMeta.Version,
+		RefCount: chunkMeta.RefCount,
 	}
 }
 
