@@ -8,10 +8,10 @@ type UnlimitedBufferedChannel[T any] struct {
 	buffer list.List
 }
 
-func MakeUnlimitedBufferedChannel[T any](initBufferSize int) *UnlimitedBufferedChannel[T] {
+func MakeUnlimitedBufferedChannel[T any](initBufferSize int) UnlimitedBufferedChannel[T] {
 	in := make(chan T, initBufferSize)
 	out := make(chan T, initBufferSize)
-	channel := &UnlimitedBufferedChannel[T]{
+	channel := UnlimitedBufferedChannel[T]{
 		In:     in,
 		Out:    out,
 		buffer: list.List{},
