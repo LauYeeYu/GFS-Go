@@ -11,9 +11,9 @@ func (chunkserver *Chunkserver) WriteDataAndForwardRPC(
 ) error {
 	result := make(chan gfs.WriteDataAndForwardReply)
 	go func() {
-		if len(args.ServerToWrite) > 1 {
-			serverToWrite := make([]gfs.ServerInfo, 0, len(args.ServerToWrite)-1)
-			for _, server := range args.ServerToWrite {
+		if len(args.ServersToWrite) > 1 {
+			serverToWrite := make([]gfs.ServerInfo, 0, len(args.ServersToWrite)-1)
+			for _, server := range args.ServersToWrite {
 				if server != chunkserver.server {
 					serverToWrite = append(serverToWrite, server)
 				}
@@ -22,10 +22,10 @@ func (chunkserver *Chunkserver) WriteDataAndForwardRPC(
 			err := utils.RemoteCall(
 				serverToWrite[0], "ChunkServer.WriteDataAndForwardRPC",
 				gfs.WriteDataAndForwardArgs{
-					ServerToWrite: serverToWrite,
-					ChunkHandle:   args.ChunkHandle,
-					Offset:        args.Offset,
-					Data:          args.Data,
+					ServersToWrite: serverToWrite,
+					ChunkHandle:    args.ChunkHandle,
+					Offset:         args.Offset,
+					Data:           args.Data,
 				},
 				&reply,
 			)

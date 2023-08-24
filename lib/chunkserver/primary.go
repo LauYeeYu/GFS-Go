@@ -9,8 +9,10 @@ import (
 )
 
 type WriteRequest struct {
+	ChunkHandle         gfs.ChunkHandle
 	Offset              gfs.Length // -1 if is record append, and becomes the true offset after the write operation
 	Data                []byte
+	ServersToWrite      []gfs.ServerInfo
 	ReturnChan          chan error
 	ExceedLengthOfChunk bool
 }
@@ -59,11 +61,68 @@ func (chunk *Chunk) handleWriteRequest(request *WriteRequest) {
 		chunk.Unlock()
 		request.Offset = offset
 		request.ExceedLengthOfChunk = exceed
-		request.ReturnChan <- err
+		if err != nil {
+			request.ReturnChan <- err
+			return
+		}
+		if chunk.chunkserver.forwardData(request, exceed) {
+			request.ReturnChan <- nil
+		} else {
+			request.ReturnChan <- errors.New(
+				"Chunk.handleWriteRequest: forward data failed",
+			)
+		}
 	} else {
 		err := chunk.rangedWrite(request.Offset, request.Data)
 		chunk.Unlock()
-		request.ReturnChan <- err
+		if err != nil {
+			request.ReturnChan <- err
+		}
+		if chunk.chunkserver.forwardData(request, false) {
+			request.ReturnChan <- nil
+		} else {
+			request.ReturnChan <- errors.New(
+				"Chunk.handleWriteRequest: forward data failed",
+			)
+		}
+	}
+}
+
+// forwardData forwards the write request to other chunkserver.
+// Return true if the write operation is successful.
+func (chunkserver *Chunkserver) forwardData(writeRequest *WriteRequest, onlyPadChunk bool) bool {
+	if len(writeRequest.ServersToWrite) > 1 {
+		serverToWrite := make([]gfs.ServerInfo, 0, len(writeRequest.ServersToWrite)-1)
+		for _, server := range writeRequest.ServersToWrite {
+			if server != chunkserver.server {
+				serverToWrite = append(serverToWrite, server)
+			}
+		}
+		reply := gfs.WriteDataAndForwardReply{}
+		var data []byte
+		if onlyPadChunk {
+			data = make([]byte, gfs.ChunkSize-writeRequest.Offset)
+		} else {
+			data = writeRequest.Data
+		}
+		err := utils.RemoteCall(serverToWrite[0], "ChunkServer.WriteDataAndForwardRPC",
+			gfs.WriteDataAndForwardArgs{
+				ServersToWrite: serverToWrite,
+				ChunkHandle:    writeRequest.ChunkHandle,
+				Offset:         writeRequest.Offset,
+				Data:           data,
+			},
+			&reply,
+		)
+		if err != nil {
+			gfs.Log(gfs.Error, err.Error())
+			return false
+		} else {
+			return reply.Successful
+		}
+	} else {
+		// This is the only chunkserver to write
+		return true
 	}
 }
 

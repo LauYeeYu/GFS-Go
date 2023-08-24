@@ -62,10 +62,10 @@ type RevokeLeaseReply struct {
 }
 
 type WriteDataAndForwardArgs struct {
-	ServerToWrite []ServerInfo
-	ChunkHandle   ChunkHandle
-	Offset        Length
-	Data          []byte
+	ServersToWrite []ServerInfo
+	ChunkHandle    ChunkHandle
+	Offset         Length
+	Data           []byte
 }
 
 type WriteDataAndForwardReply struct {

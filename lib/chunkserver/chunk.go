@@ -248,7 +248,7 @@ func (chunk *Chunk) append(data []byte) (gfs.Length, error, bool) {
 	originalLength := chunk.length()
 	if originalLength+gfs.Length(len(data)) > gfs.ChunkSize {
 		err := chunk.padChunk(gfs.Length(len(data)))
-		return -1, err, true
+		return originalLength, err, true
 	}
 	err := chunk.internalRangedWrite(originalLength, data)
 	if err != nil {
