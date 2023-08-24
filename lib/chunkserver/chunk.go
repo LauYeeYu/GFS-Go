@@ -21,8 +21,10 @@ type Chunk struct {
 	isPrimary       bool
 	leaseExpireTime time.Time
 
-	WriteChannel utils.UnlimitedBufferedChannel[*WriteRequest]
+	writeChannel utils.UnlimitedBufferedChannel[*WriteRequest]
 	chunkserver  *Chunkserver
+
+	removed bool
 
 	sync.RWMutex
 }
@@ -43,12 +45,13 @@ func MakeChunk(
 		chunkFile:    chunkFile,
 		checksum:     checksum,
 		isPrimary:    false,
-		WriteChannel: utils.MakeUnlimitedBufferedChannel[*WriteRequest](16),
+		writeChannel: utils.MakeUnlimitedBufferedChannel[*WriteRequest](16),
 		chunkserver:  chunkserver,
+		removed:      false,
 	}
 	go func() {
 		for {
-			request := <-chunk.WriteChannel.Out
+			request := <-chunk.writeChannel.Out
 			chunk.handleWriteRequest(request)
 		}
 	}()

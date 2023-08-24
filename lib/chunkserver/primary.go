@@ -34,6 +34,13 @@ func (chunk *Chunk) handleWriteRequest(request *WriteRequest) {
 		)
 		return
 	}
+	if chunk.removed {
+		chunk.Unlock()
+		request.ReturnChan <- errors.New(
+			"Chunk.handleWriteRequest: chunk removed",
+		)
+		return
+	}
 	if chunk.leaseAboutToExpire() {
 		chunk.Unlock()
 		_ = chunk.extendLease(chunk.chunkserver)

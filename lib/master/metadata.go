@@ -490,5 +490,5 @@ func (master *Master) makeFileCopy(file *FileMetadata) *FileMetadata {
 func (chunkMeta *ChunkMetadata) removeChunkserver(server gfs.ServerInfo) {
 	chunkMeta.Lock()
 	defer chunkMeta.Unlock()
-	chunkMeta.Servers.Remove(server)
+	chunkMeta.Servers.RemoveIfExist(server)
 }

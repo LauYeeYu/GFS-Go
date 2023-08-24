@@ -60,3 +60,21 @@ type RevokeLeaseArgs struct {
 type RevokeLeaseReply struct {
 	Accepted bool
 }
+
+type WriteDataAndForwardArgs struct {
+	ServerToWrite []ServerInfo
+	ChunkHandle   ChunkHandle
+	Offset        Length
+	Data          []byte
+}
+
+type WriteDataAndForwardReply struct {
+	Successful bool // true if succeed in writing on all servers in the list
+}
+
+type RemoveChunkMetaArgs struct {
+	ServerInfo  ServerInfo
+	ChunkHandle ChunkHandle
+}
+
+type RemoveChunkMetaReply struct{}

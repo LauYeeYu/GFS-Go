@@ -139,3 +139,32 @@ func (master *Master) ExtendLeaseRPC(
 	chunk.Unlock()
 	return nil
 }
+
+// RemoveChunkMetaRPC is called by chunkserver to inform the master that
+// this chunk is no longer stored on this chunkserver.
+// The function will remove the chunkserver from the chunk's server list
+// and automatically revoke the lease if the chunkserver is the leaseholder
+// without further confirmation.
+func (master *Master) RemoveChunkMetaRPC(
+	args gfs.RemoveChunkMetaArgs,
+	_ *gfs.RemoveChunkMetaReply,
+) error {
+	master.chunksLock.Lock()
+	defer master.chunksLock.Unlock()
+	chunk, ok := master.chunks[args.ChunkHandle]
+	if !ok {
+		return errors.New("Master.RemoveChunkMetaRPC: chunk not found")
+	}
+	gfs.Log(gfs.Warning, fmt.Sprintf(
+		"Chunkserver %v ask master to remove it from chunk %d's list.",
+		args.ServerInfo,
+		args.ChunkHandle,
+	))
+	chunk.Lock()
+	defer chunk.Unlock()
+	chunk.removeChunkserver(args.ServerInfo)
+	if chunk.hasLeaseHolder() && *chunk.Leaseholder == args.ServerInfo {
+		chunk.Leaseholder = nil
+	}
+	return nil
+}

@@ -198,6 +198,10 @@ func (chunkserver *Chunkserver) removeChunkAndMeta(chunkHandle gfs.ChunkHandle) 
 	}
 	delete(chunkserver.chunks, chunkHandle)
 	chunkserver.chunksLock.Unlock()
+	gfs.Log(gfs.Info, fmt.Sprintf("Chunkserver.removeChunk: chunk %d removed", chunkHandle))
+	chunk.Lock()
+	chunk.removed = true
+	chunk.Unlock()
 	chunk.removeChunk(chunkserver)
 	return nil
 }
