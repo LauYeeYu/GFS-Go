@@ -19,7 +19,16 @@ func (chunkserver *Chunkserver) WriteDataAndForwardRPC(
 				}
 			}
 			reply := gfs.WriteDataAndForwardReply{}
-			err := utils.RemoteCall(serverToWrite[0], "ChunkServer.WriteDataAndForwardRPC", args, &reply)
+			err := utils.RemoteCall(
+				serverToWrite[0], "ChunkServer.WriteDataAndForwardRPC",
+				gfs.WriteDataAndForwardArgs{
+					ServerToWrite: serverToWrite,
+					ChunkHandle:   args.ChunkHandle,
+					Offset:        args.Offset,
+					Data:          args.Data,
+				},
+				&reply,
+			)
 			if err != nil {
 				gfs.Log(gfs.Error, err.Error())
 				reply.Successful = false
