@@ -78,3 +78,20 @@ type RemoveChunkMetaArgs struct {
 }
 
 type RemoveChunkMetaReply struct{}
+
+type NamespaceExistsArgs struct {
+	Namespace Namespace
+}
+
+type NamespaceExistsReply struct {
+	Exists bool
+}
+
+type MakeNamespaceArgs struct {
+	Namespace Namespace
+}
+
+type MakeNamespaceReply struct {
+	Success bool
+	Message string
+}
