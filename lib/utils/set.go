@@ -36,3 +36,11 @@ func (set Set[T]) Size() int {
 func (set Set[T]) Empty() bool {
 	return set.Size() == 0
 }
+
+func (set Set[T]) ToSlice() []T {
+	slice := make([]T, 0, len(set))
+	for value := range set {
+		slice = append(slice, value)
+	}
+	return slice
+}
