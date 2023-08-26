@@ -71,7 +71,7 @@ func (master *Master) grantLease(chunkHandle gfs.ChunkHandle) error {
 	for info, _ := range servers {
 		go func(server gfs.ServerInfo) {
 			reply := gfs.UpdateChunkReply{}
-			err := utils.RemoteCall(server, "ChunkServer.UpdateChunkRPC",
+			err := utils.RemoteCall(server, "Chunkserver.UpdateChunkRPC",
 				gfs.UpdateChunkArgs{
 					ServerInfo:      server,
 					ChunkHandle:     chunkHandle,
@@ -178,7 +178,7 @@ func (master *Master) revokeLease(chunkHandle gfs.ChunkHandle) error {
 	leaseholder := *chunk.Leaseholder
 	chunk.Unlock()
 	reply := gfs.RevokeLeaseReply{}
-	err := utils.RemoteCall(leaseholder, "ChunkServer.RevokeLeaseRPC",
+	err := utils.RemoteCall(leaseholder, "Chunkserver.RevokeLeaseRPC",
 		gfs.RevokeLeaseArgs{
 			ServerInfo:  leaseholder,
 			ChunkHandle: chunkHandle,

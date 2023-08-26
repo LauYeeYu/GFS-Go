@@ -105,7 +105,7 @@ func (chunkserver *Chunkserver) forwardData(writeRequest *WriteRequest, onlyPadC
 		} else {
 			data = writeRequest.Data
 		}
-		err := utils.RemoteCall(serverToWrite[0], "ChunkServer.WriteDataAndForwardRPC",
+		err := utils.RemoteCall(serverToWrite[0], "Chunkserver.WriteDataAndForwardRPC",
 			gfs.WriteDataAndForwardArgs{
 				ServersToWrite: serverToWrite,
 				ChunkHandle:    writeRequest.ChunkHandle,

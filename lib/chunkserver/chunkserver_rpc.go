@@ -20,7 +20,7 @@ func (chunkserver *Chunkserver) WriteDataAndForwardRPC(
 			}
 			reply := gfs.WriteDataAndForwardReply{}
 			err := utils.RemoteCall(
-				serverToWrite[0], "ChunkServer.WriteDataAndForwardRPC",
+				serverToWrite[0], "Chunkserver.WriteDataAndForwardRPC",
 				gfs.WriteDataAndForwardArgs{
 					ServersToWrite: serverToWrite,
 					ChunkHandle:    args.ChunkHandle,

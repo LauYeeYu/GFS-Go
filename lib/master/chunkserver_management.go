@@ -85,7 +85,7 @@ func (master *Master) ReceiveHeartBeatRPC(
 
 func (master *Master) sendLease(args gfs.GrantLeaseArgs) error {
 	reply := &gfs.GrantLeaseReply{}
-	err := utils.RemoteCall(args.ServerInfo, "ChunkServer.ReceiveLeaseRPC",
+	err := utils.RemoteCall(args.ServerInfo, "Chunkserver.ReceiveLeaseRPC",
 		args, reply)
 	if err != nil {
 		return err
