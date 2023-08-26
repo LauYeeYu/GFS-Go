@@ -52,12 +52,14 @@ func (master *Master) grantLease(chunkHandle gfs.ChunkHandle) error {
 
 	// Inform all chunkservers to update the lease
 	chunk.LeaseLock.Lock()
+	master.chunkserversLock.RLock()
 	defer chunk.LeaseLock.Unlock()
 	chunk.RLock()
 	servers := make(map[gfs.ServerInfo]*ChunkserverData)
 	for server := range chunk.Servers {
 		servers[server] = master.chunkservers[server]
 	}
+	master.chunkserversLock.RUnlock()
 	master.chunksLock.Unlock()
 	version := chunk.Version
 	chunk.RUnlock()
@@ -119,12 +121,14 @@ func (master *Master) grantLease(chunkHandle gfs.ChunkHandle) error {
 	var leaseholder gfs.ServerInfo
 	first := true
 	for serverInfo, data := range servers {
+		data.Lock()
 		if first || len(data.Lease) < numberOfLeases {
 			first = false
 			data.flushLease()
 			numberOfLeases = len(data.Lease)
 			leaseholder = serverInfo
 		}
+		data.Unlock()
 	}
 
 	// Increment the chunk version
@@ -148,6 +152,11 @@ func (master *Master) grantLease(chunkHandle gfs.ChunkHandle) error {
 	chunk.Leaseholder = &leaseholder
 	chunk.LeaseExpire = expire
 	chunk.Unlock()
+	master.chunkserversLock.Lock()
+	master.chunkservers[leaseholder].Lock()
+	master.chunkservers[leaseholder].Lease[chunkHandle] = expire
+	master.chunkservers[leaseholder].Unlock()
+	master.chunkserversLock.Unlock()
 	return master.sendLease(gfs.GrantLeaseArgs{
 		ServerInfo:  leaseholder,
 		ChunkHandle: chunkHandle,
