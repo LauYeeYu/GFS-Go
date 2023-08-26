@@ -39,6 +39,9 @@ func (master *Master) reduceChunkRef(chunk gfs.ChunkHandle) error {
 	return nil
 }
 
+// grantLease grants lease for a chunk. If the function doesn't return error,
+// the chunk will have a leaseholder. You may check the leaseholder field of
+// the chunk to get the leaseholder.
 func (master *Master) grantLease(chunkHandle gfs.ChunkHandle) error {
 	master.chunksLock.Lock()
 	chunk, ok := master.chunks[chunkHandle]
