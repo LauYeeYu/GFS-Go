@@ -9,6 +9,7 @@ type Client struct {
 
 func MakeClient(master gfs.ServerInfo) *Client {
 	return &Client{
+		master:       master,
 		replicaCache: make(map[gfs.ChunkHandle]*ReplicaInfo),
 	}
 }
