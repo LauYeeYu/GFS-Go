@@ -1,10 +1,14 @@
 package client
 
-import "gfs"
+import (
+	"gfs"
+	"sync"
+)
 
 type Client struct {
 	master       gfs.ServerInfo
 	replicaCache map[gfs.ChunkHandle]*ReplicaInfo
+	replicaLock  sync.Mutex
 }
 
 func MakeClient(master gfs.ServerInfo) *Client {

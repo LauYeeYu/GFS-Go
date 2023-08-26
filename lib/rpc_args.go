@@ -95,3 +95,14 @@ type MakeNamespaceReply struct {
 	Success bool
 	Message string
 }
+
+type GetChunkReplicasArgs struct {
+	ChunkHandle ChunkHandle
+}
+
+type GetChunkReplicasReply struct {
+	Valid             bool
+	Locations         []ServerInfo
+	Primary           ServerInfo
+	PrimaryExpireTime time.Time
+}
