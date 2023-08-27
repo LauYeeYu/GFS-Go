@@ -43,6 +43,16 @@ func (master *Master) GetChunkReplicasRPC(
 		reply.Valid = false
 		return errors.New("chunk does not exist")
 	}
+	chunk.Lock()
+	if chunk.Servers.Empty() {
+		chunk.Unlock()
+		reply.Valid = true
+		reply.Orphan = true
+		reply.Locations = []gfs.ServerInfo{}
+		gfs.Log(gfs.Warning, "chunk %d is orphan", args.ChunkHandle)
+		return errors.New("chunk has no replicas")
+	}
+	chunk.Unlock()
 	if err := master.grantLease(args.ChunkHandle); err != nil {
 		reply.Valid = false
 		return err

@@ -102,6 +102,7 @@ type GetChunkReplicasArgs struct {
 
 type GetChunkReplicasReply struct {
 	Valid             bool
+	Orphan            bool
 	Locations         []ServerInfo
 	Primary           ServerInfo
 	PrimaryExpireTime time.Time

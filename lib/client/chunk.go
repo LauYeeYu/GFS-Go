@@ -31,6 +31,9 @@ func (replicaInfo *ReplicaInfo) Expired() bool {
 	return time.Now().After(replicaInfo.PrimaryExpireTime)
 }
 
+// getChunkReplicaInfo returns the replica info of the chunk and whether the
+// chunk is in good status or not. Good status means the chunk exists or is
+// not orphan (the chunk has replica).
 func (client *Client) getChunkReplicaInfo(handle gfs.ChunkHandle) (*ReplicaInfo, bool) {
 	client.replicaLock.Lock()
 	replicaInfo, ok := client.getReplicaInfoCache(handle)
@@ -44,6 +47,10 @@ func (client *Client) getChunkReplicaInfo(handle gfs.ChunkHandle) (*ReplicaInfo,
 		&reply,
 	)
 	if err != nil || !reply.Valid {
+		return nil, false
+	}
+	if reply.Orphan {
+		gfs.Log(gfs.Warning, "chunk %d is orphan", handle)
 		return nil, false
 	}
 	replicaInfo = &ReplicaInfo{
