@@ -75,3 +75,27 @@ func (master *Master) GetChunkReplicasRPC(
 	}
 	return nil
 }
+
+func (master *Master) GetFileChunksRPC(
+	args gfs.GetFileChunksArgs,
+	reply *gfs.GetFileChunksReply,
+) error {
+	master.namespacesLock.RLock()
+	namespace, exist := master.namespaces[args.Namespace]
+	master.namespacesLock.RUnlock()
+	if !exist {
+		reply.Valid = false
+		return errors.New("namespace does not exist")
+	}
+	namespace.RLock()
+	defer namespace.RUnlock()
+	file, err := namespace.lockAndGetFile(args.Filename, true)
+	if err != nil {
+		reply.Valid = false
+		return err
+	}
+	reply.Valid = true
+	reply.Chunks = file.Chunks
+	_ = namespace.UnlockFileOrDirectory(args.Filename, true)
+	return nil
+}

@@ -107,3 +107,13 @@ type GetChunkReplicasReply struct {
 	Primary           ServerInfo
 	PrimaryExpireTime time.Time
 }
+
+type GetFileChunksArgs struct {
+	Namespace Namespace
+	Filename  string
+}
+
+type GetFileChunksReply struct {
+	Valid  bool
+	Chunks []ChunkHandle
+}
