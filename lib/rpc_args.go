@@ -98,12 +98,14 @@ type MakeNamespaceReply struct {
 
 type GetChunkReplicasArgs struct {
 	ChunkHandle ChunkHandle
+	ReadOnly    bool // If true, the master will not grant lease to the chunk
 }
 
 type GetChunkReplicasReply struct {
 	Valid             bool
 	Orphan            bool
 	Locations         []ServerInfo
+	HasPrimary        bool
 	Primary           ServerInfo
 	PrimaryExpireTime time.Time
 }
