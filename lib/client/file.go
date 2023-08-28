@@ -52,3 +52,33 @@ func (client *Client) getChunkHandleAt(
 	index, offsetInChunk := offsetToIndex(offset)
 	return chunks[index], offsetInChunk, nil
 }
+
+func (client *Client) getFileSize(file *File) (gfs.Length, error) {
+	chunks, err := client.getFileChunks(file)
+	if err != nil {
+		return -1, err
+	}
+	if len(chunks) == 0 {
+		return 0, nil
+	}
+	lastChunk := chunks[len(chunks)-1]
+	replicaInfo, good := client.getChunkReplicaInfo(lastChunk, true)
+	if !good {
+		return -1, errors.New("orphan chunk")
+	}
+	server, exists := replicaInfo.GetOneReplica()
+	if !exists {
+		return -1, errors.New("no replica")
+	}
+	reply := gfs.GetChunkSizeReply{}
+	err = utils.RemoteCall(
+		server, "Chunkserver.GetChunkSizeRPC",
+		gfs.GetChunkSizeArgs{ChunkHandle: lastChunk},
+		&reply,
+	)
+	if err != nil {
+		return -1, err
+	} else {
+		return gfs.Length(len(chunks))*gfs.ChunkSize + reply.Size, nil
+	}
+}

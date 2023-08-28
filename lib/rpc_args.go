@@ -119,3 +119,11 @@ type GetFileChunksReply struct {
 	Valid  bool
 	Chunks []ChunkHandle
 }
+
+type GetChunkSizeArgs struct {
+	ChunkHandle ChunkHandle
+}
+
+type GetChunkSizeReply struct {
+	Size Length // -1 if not exist
+}

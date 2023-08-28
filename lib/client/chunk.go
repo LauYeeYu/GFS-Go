@@ -3,6 +3,7 @@ package client
 import (
 	"gfs"
 	"gfs/utils"
+	"math/rand"
 	"time"
 )
 
@@ -68,4 +69,15 @@ func (client *Client) getChunkReplicaInfo(
 	client.replicaCache[handle] = replicaInfo
 	client.replicaLock.Unlock()
 	return replicaInfo, reply.Orphan
+}
+
+// GetOneReplica returns a random replica of the chunk.
+// If the chunk has no replica, the function will return the default
+// serverInfo and false. Otherwise, the function will return a random
+// replica and true. This function is useful when reading a chunk.
+func (replicaInfo *ReplicaInfo) GetOneReplica() (gfs.ServerInfo, bool) {
+	if len(replicaInfo.Locations) == 0 {
+		return gfs.ServerInfo{}, false
+	}
+	return replicaInfo.Locations[rand.Intn(len(replicaInfo.Locations))], true
 }
