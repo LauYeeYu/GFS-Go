@@ -22,34 +22,39 @@ func (master *Master) ReceiveHeartBeatRPC(
 ) error {
 	// register new chunkserver if needed
 	master.chunkserversLock.Lock()
-	chunkServer, ok := master.chunkservers[args.ServerInfo]
+	chunkserver, ok := master.chunkservers[args.ServerInfo]
 	if !ok {
 		gfs.Log(gfs.Info, fmt.Sprintf("New chunkserver %v joined\n", args.ServerInfo))
-		master.chunkservers[args.ServerInfo] = &ChunkserverData{
+		chunkserver = &ChunkserverData{
 			LastSeen: time.Now(),
 			Chunks:   utils.MakeSet[gfs.ChunkHandle](),
 			Lease:    make(map[gfs.ChunkHandle]time.Time),
 		}
+		master.chunkservers[args.ServerInfo] = chunkserver
 		reply.RequireAllChunks = true
 	} else {
-		chunkServer.LastSeen = time.Now()
+		chunkserver.LastSeen = time.Now()
 		reply.RequireAllChunks = false
 	}
 	master.chunkserversLock.Unlock()
 
-	// update chunk status
+	// Update status of good chunks
+	// This includes:
+	// 1. Update the chunks' state
+	// 2. Update the chunkserver's state
 	expiredChunks := make([]gfs.ChunkHandle, 0)
 	for _, chunk := range args.Chunks {
 		master.chunksLock.Lock()
 		chunkMeta, existChunk := master.chunks[chunk.Handle]
+		master.chunksLock.Unlock()
 		if existChunk {
-			if chunk.Version < master.chunks[chunk.Handle].Version {
+			if chunk.Version < chunkMeta.Version {
 				gfs.Log(gfs.Warning, fmt.Sprintf(
 					"Chunk %v version %v is stale, ignore",
 					chunk.Handle, chunk.Version))
 				expiredChunks = append(expiredChunks, chunk.Handle)
 				chunkMeta.removeChunkserver(args.ServerInfo)
-			} else if chunk.Version > master.chunks[chunk.Handle].Version {
+			} else if chunk.Version > chunkMeta.Version {
 				gfs.Log(gfs.Info, fmt.Sprintf(
 					"Chunk %v version %v is newer, update",
 					chunk.Handle, chunk.Version))
@@ -75,8 +80,30 @@ func (master *Master) ReceiveHeartBeatRPC(
 				fmt.Sprintf("Chunk %v does not exist, ignore", chunk.Handle),
 			)
 		}
-		master.chunksLock.Unlock()
 	}
+	chunkserver.Lock()
+	for _, chunk := range args.Chunks {
+		chunkserver.Chunks.Add(chunk.Handle)
+	}
+	chunkserver.Unlock()
+
+	// Handle the corrupted chunks
+	for _, chunk := range args.CorruptedChunks {
+		master.chunksLock.Lock()
+		chunkMeta, existChunk := master.chunks[chunk]
+		master.chunksLock.Unlock()
+		if existChunk {
+			chunkMeta.removeChunkserver(args.ServerInfo)
+		}
+	}
+	chunkserver.Lock()
+	for _, chunk := range args.CorruptedChunks {
+		chunkserver.Chunks.RemoveIfExist(chunk)
+		if _, exist := chunkserver.Lease[chunk]; exist {
+			delete(chunkserver.Lease, chunk)
+		}
+	}
+	chunkserver.Unlock()
 
 	// return expired chunks
 	reply.ExpiredChunks = expiredChunks

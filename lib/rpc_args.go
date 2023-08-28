@@ -11,8 +11,9 @@ type ChunkInfo struct {
 }
 
 type HeartBeatArgs struct {
-	ServerInfo ServerInfo
-	Chunks     []ChunkInfo
+	ServerInfo      ServerInfo
+	Chunks          []ChunkInfo
+	CorruptedChunks []ChunkHandle
 }
 
 type HeartBeatReply struct {

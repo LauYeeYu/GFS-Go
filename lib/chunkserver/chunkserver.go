@@ -25,9 +25,11 @@ type Chunkserver struct {
 	chunksDir  string
 
 	// chunks
-	chunks     map[gfs.ChunkHandle]*Chunk
-	chunksLock sync.RWMutex
-	chunkQueue chunkQueue
+	chunks              map[gfs.ChunkHandle]*Chunk
+	chunksLock          sync.RWMutex
+	chunkQueue          chunkQueue
+	corruptedChunks     utils.Set[gfs.ChunkHandle]
+	corruptedChunksLock sync.Mutex
 
 	// shutdown
 	shutdown chan struct{}
@@ -40,11 +42,13 @@ func MakeChunkserver(
 	storageDir string,
 ) *Chunkserver {
 	chunkserver := Chunkserver{
-		server:     chunkserverInfo,
-		master:     masterInfo,
-		storageDir: storageDir,
-		chunksDir:  utils.MergePath(storageDir, gfs.ChunkDirName),
-		chunks:     make(map[gfs.ChunkHandle]*Chunk),
+		server:          chunkserverInfo,
+		master:          masterInfo,
+		storageDir:      storageDir,
+		chunksDir:       utils.MergePath(storageDir, gfs.ChunkDirName),
+		chunks:          make(map[gfs.ChunkHandle]*Chunk),
+		corruptedChunks: utils.MakeSet[gfs.ChunkHandle](),
+		shutdown:        make(chan struct{}),
 	}
 	if err := chunkserver.loadChunks(); err != nil {
 		gfs.Log(gfs.Error, err.Error())
@@ -131,12 +135,15 @@ func (chunkserver *Chunkserver) handleAllRPCs() {
 }
 
 func (chunkserver *Chunkserver) sendHeartBeat(withAllChunks bool) error {
+	// Prepare the number of chunks to send
 	var number int
 	if withAllChunks {
 		number = len(chunkserver.chunks)
 	} else {
 		number = gfs.HeartbeatChunkNumber
 	}
+
+	// Get the chunks to send
 	chunks := make([]gfs.ChunkInfo, 0, number)
 	putChunk := func(chunk *Chunk) {
 		chunk.RLock()
@@ -169,9 +176,22 @@ func (chunkserver *Chunkserver) sendHeartBeat(withAllChunks bool) error {
 		}
 		chunkserver.chunksLock.RUnlock()
 	}
+
+	// Get the corrupted chunks
+	chunkserver.corruptedChunksLock.Lock()
+	corruptedChunks := chunkserver.corruptedChunks.ToSlice()
+	// Clear the corrupted chunk set
+	chunkserver.corruptedChunks = utils.MakeSet[gfs.ChunkHandle]()
+	chunkserver.corruptedChunksLock.Unlock()
+
+	// Send heartbeat
 	reply := gfs.HeartBeatReply{}
 	err := utils.RemoteCall(chunkserver.master, "Master.ReceiveHeartBeatRPC",
-		gfs.HeartBeatArgs{ServerInfo: chunkserver.server, Chunks: chunks},
+		gfs.HeartBeatArgs{
+			ServerInfo:      chunkserver.server,
+			Chunks:          chunks,
+			CorruptedChunks: corruptedChunks,
+		},
 		&reply)
 	if err != nil {
 		return err
@@ -208,54 +228,23 @@ func (chunkserver *Chunkserver) removeChunkAndMeta(chunkHandle gfs.ChunkHandle) 
 	return nil
 }
 
-func (chunkserver *Chunkserver) UpdateChunkRPC(
-	args gfs.UpdateChunkArgs,
-	reply *gfs.UpdateChunkReply,
-) error {
+func (chunkserver *Chunkserver) OnChunkCorrupted(chunkHandle gfs.ChunkHandle) {
 	chunkserver.chunksLock.Lock()
-	chunk, exists := chunkserver.chunks[args.ChunkHandle]
-	chunkserver.chunksLock.Unlock()
+	chunk, exists := chunkserver.chunks[chunkHandle]
 	if !exists {
-		reply.Accepted = false
-		reply.CurrentVersion = -1
-		gfs.Log(gfs.Error, "Chunkserver.UpdateChunkRPC: chunk does not exist")
-		return errors.New("Chunkserver.UpdateChunkRPC: chunk does not exist")
-	}
-	chunk.Lock()
-	defer chunk.Unlock()
-	if args.OriginalVersion != chunk.version {
-		reply.Accepted = false
-		reply.CurrentVersion = chunk.version
-		if args.OriginalVersion < chunk.version {
-			gfs.Log(
-				gfs.Info,
-				fmt.Sprintf(
-					"Chunkserver.UpdateChunkRPC: version too old, current version: %d, original version: %d",
-					chunk.version,
-					args.OriginalVersion,
-				),
-			)
-		} else {
-			gfs.Log(gfs.Error,
-				fmt.Sprintf(
-					"Chunkserver.UpdateChunkRPC: version too new, current version: %d, original version: %d",
-					chunk.version,
-					args.OriginalVersion,
-				),
-			)
-			return errors.New("Chunkserver.UpdateChunkRPC: version too new")
-		}
+		gfs.Log(gfs.Error, "Chunkserver.OnChunkCorrupted: chunk does not exist in chunkserver map")
 	} else {
-		chunk.version = args.NewVersion
-		reply.Accepted = true
-		reply.CurrentVersion = chunk.version
-		gfs.Log(gfs.Info,
-			fmt.Sprintf(
-				"Chunkserver.UpdateChunkRPC: version updated, current version: %d, original version: %d",
-				chunk.version,
-				args.OriginalVersion,
-			),
-		)
+		delete(chunkserver.chunks, chunkHandle)
 	}
-	return nil
+	chunkserver.chunksLock.Unlock()
+	chunk.Lock()
+	chunk.removed = true
+	chunk.Unlock()
+	chunk.removeChunk(chunkserver)
+
+	// Put the chunk into the corrupted chunk set to allow master to
+	// remove it through heartbeat
+	chunkserver.corruptedChunksLock.Lock()
+	chunkserver.corruptedChunks.Add(chunkHandle)
+	chunkserver.corruptedChunksLock.Unlock()
 }
