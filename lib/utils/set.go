@@ -44,3 +44,7 @@ func (set Set[T]) ToSlice() []T {
 	}
 	return slice
 }
+
+func (set Set[T]) Clear() {
+	clear(set)
+}
