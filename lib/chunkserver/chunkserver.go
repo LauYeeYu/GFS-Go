@@ -23,7 +23,6 @@ type Chunkserver struct {
 	// storage
 	storageDir string
 	chunksDir  string
-	leasesDir  string
 
 	// chunks
 	chunks     map[gfs.ChunkHandle]*Chunk
@@ -45,7 +44,6 @@ func MakeChunkserver(
 		master:     masterInfo,
 		storageDir: storageDir,
 		chunksDir:  utils.MergePath(storageDir, gfs.ChunkDirName),
-		leasesDir:  utils.MergePath(storageDir, gfs.LeaseDirName),
 		chunks:     make(map[gfs.ChunkHandle]*Chunk),
 	}
 	if err := chunkserver.loadChunks(); err != nil {
@@ -61,6 +59,10 @@ func MakeChunkserver(
 }
 
 func (chunkserver *Chunkserver) loadChunks() error {
+	err := os.MkdirAll(chunkserver.chunksDir, 0755)
+	if err != nil {
+		return err
+	}
 	files, err := os.ReadDir(chunkserver.chunksDir)
 	if err != nil {
 		return err
