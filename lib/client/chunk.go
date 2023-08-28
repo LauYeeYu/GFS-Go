@@ -41,7 +41,7 @@ func (client *Client) getChunkReplicaInfo(
 	replicaInfo, ok := client.getReplicaInfoCache(handle)
 	client.replicaLock.Unlock()
 	if ok {
-		return replicaInfo, true
+		return replicaInfo, len(replicaInfo.Locations) > 0
 	}
 	reply := gfs.GetChunkReplicasReply{}
 	err := utils.RemoteCall(client.master, "Master.GetChunkReplicasRPC",
@@ -53,7 +53,6 @@ func (client *Client) getChunkReplicaInfo(
 	}
 	if reply.Orphan {
 		gfs.Log(gfs.Warning, "chunk %d is orphan", handle)
-		return nil, false
 	}
 	var primary *gfs.ServerInfo = nil
 	if reply.HasPrimary {
@@ -68,5 +67,5 @@ func (client *Client) getChunkReplicaInfo(
 	client.replicaLock.Lock()
 	client.replicaCache[handle] = replicaInfo
 	client.replicaLock.Unlock()
-	return replicaInfo, true
+	return replicaInfo, reply.Orphan
 }
