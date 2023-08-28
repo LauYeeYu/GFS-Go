@@ -6,7 +6,6 @@ import (
 	"gfs"
 	"gfs/utils"
 	"os"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -60,7 +59,7 @@ func MakeChunk(
 
 func (chunkserver *Chunkserver) createChunk(chunkHandle gfs.ChunkHandle) (*Chunk, error) {
 	chunkFile, err := os.OpenFile(
-		utils.MergePath(chunkserver.chunksDir, fmt.Sprintf("%d", chunkHandle)),
+		chunkFilePath(chunkHandle, chunkserver),
 		os.O_CREATE|os.O_RDWR, 0644,
 	)
 	if err != nil {
@@ -68,23 +67,15 @@ func (chunkserver *Chunkserver) createChunk(chunkHandle gfs.ChunkHandle) (*Chunk
 		return nil, err
 	}
 	err = utils.WriteTextInt64ToFile(
-		utils.MergePath(
-			chunkserver.chunksDir,
-			fmt.Sprintf("%d%s", chunkHandle, gfs.VersionSuffix),
-		),
-		0,
+		chunkVersionFilePath(chunkHandle, chunkserver), 0,
 	)
 	if err != nil {
 		gfs.Log(gfs.Error, "Fail to create version file: ", err.Error())
 		return nil, err
 	}
 	checksum := GetChecksum([]byte{})
-	err = utils.WriteTextInt64ToFile(
-		utils.MergePath(
-			chunkserver.chunksDir,
-			fmt.Sprintf("%d%s", chunkHandle, gfs.ChecksumSuffix),
-		),
-		int64(checksum),
+	err = utils.WriteTextUint32ToFile(
+		chunkChecksumFilePath(chunkHandle, chunkserver), uint32(checksum),
 	)
 	if err != nil {
 		gfs.Log(gfs.Error, "Fail to create checksum file: ", err.Error())
@@ -137,24 +128,14 @@ func LoadChunkMetadata(
 	chunkserver *Chunkserver,
 ) *Chunk {
 	// Get the version
-	versionFile, err := os.Open(chunkVersionFilePath(handle, chunkserver))
-	if err != nil {
-		gfs.Log(gfs.Error, "Fail to open version file: ", err.Error())
-		return nil
-	}
-	version, err := strconv.ParseInt(versionFile.Name(), 10, 32)
+	version, err := utils.ReadTextInt64FromFile(chunkVersionFilePath(handle, chunkserver))
 	if err != nil {
 		gfs.Log(gfs.Error, "Fail to parse version: ", err.Error())
 		return nil
 	}
 
 	// Get the checksum
-	checksumFile, err := os.Open(chunkChecksumFilePath(handle, chunkserver))
-	if err != nil {
-		gfs.Log(gfs.Error, "Fail to open version file: ", err.Error())
-		return nil
-	}
-	checksumInt, err := strconv.ParseInt(checksumFile.Name(), 10, 32)
+	checksumInt, err := utils.ReadTextUint32FromFile(chunkChecksumFilePath(handle, chunkserver))
 	checksum := Checksum(checksumInt)
 	if err != nil {
 		gfs.Log(gfs.Error, "Fail to parse checksum: ", err.Error())
