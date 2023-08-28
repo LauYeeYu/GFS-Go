@@ -181,7 +181,7 @@ func (chunkserver *Chunkserver) sendHeartBeat(withAllChunks bool) error {
 	chunkserver.corruptedChunksLock.Lock()
 	corruptedChunks := chunkserver.corruptedChunks.ToSlice()
 	// Clear the corrupted chunk set
-	chunkserver.corruptedChunks = utils.MakeSet[gfs.ChunkHandle]()
+	chunkserver.corruptedChunks.Clear()
 	chunkserver.corruptedChunksLock.Unlock()
 
 	// Send heartbeat
