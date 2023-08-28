@@ -11,7 +11,11 @@ import (
 type Checksum uint32
 
 func (checksum *Checksum) UpdateWithByteString(data []byte) {
-	*checksum = Checksum(crc32.ChecksumIEEE(data))
+	*checksum = GetChecksum(data)
+}
+
+func GetChecksum(data []byte) Checksum {
+	return Checksum(crc32.ChecksumIEEE(data))
 }
 
 func (checksum *Checksum) Update(file *os.File, checksumFilePath string) error {
@@ -38,5 +42,5 @@ func checksumPath(storagePath string, handle gfs.ChunkHandle) string {
 }
 
 func (checksum *Checksum) Check(data []byte) bool {
-	return *checksum == Checksum(crc32.ChecksumIEEE(data))
+	return *checksum == GetChecksum(data)
 }

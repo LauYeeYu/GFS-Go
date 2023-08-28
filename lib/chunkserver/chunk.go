@@ -58,6 +58,41 @@ func MakeChunk(
 	return &chunk
 }
 
+func (chunkserver *Chunkserver) createChunk(chunkHandle gfs.ChunkHandle) (*Chunk, error) {
+	chunkFile, err := os.OpenFile(
+		utils.MergePath(chunkserver.chunksDir, fmt.Sprintf("%d", chunkHandle)),
+		os.O_CREATE|os.O_RDWR, 0644,
+	)
+	if err != nil {
+		gfs.Log(gfs.Error, "Fail to create chunk file: ", err.Error())
+		return nil, err
+	}
+	err = utils.WriteTextInt64ToFile(
+		utils.MergePath(
+			chunkserver.chunksDir,
+			fmt.Sprintf("%d%s", chunkHandle, gfs.VersionSuffix),
+		),
+		0,
+	)
+	if err != nil {
+		gfs.Log(gfs.Error, "Fail to create version file: ", err.Error())
+		return nil, err
+	}
+	checksum := GetChecksum([]byte{})
+	err = utils.WriteTextInt64ToFile(
+		utils.MergePath(
+			chunkserver.chunksDir,
+			fmt.Sprintf("%d%s", chunkHandle, gfs.ChecksumSuffix),
+		),
+		int64(checksum),
+	)
+	if err != nil {
+		gfs.Log(gfs.Error, "Fail to create checksum file: ", err.Error())
+		return nil, err
+	}
+	return MakeChunk(0, chunkHandle, chunkFile, checksum, chunkserver), nil
+}
+
 func chunkFilePath(handle gfs.ChunkHandle, chunkserver *Chunkserver) string {
 	return utils.MergePath(chunkserver.chunksDir, fmt.Sprintf("%d", handle))
 }
