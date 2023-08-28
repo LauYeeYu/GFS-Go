@@ -128,3 +128,12 @@ type GetChunkSizeArgs struct {
 type GetChunkSizeReply struct {
 	Size Length // -1 if not exist
 }
+
+type AddNewChunkArgs struct {
+	ServerInfo  ServerInfo
+	ChunkHandle ChunkHandle
+}
+
+type AddNewChunkReply struct {
+	Successful bool
+}

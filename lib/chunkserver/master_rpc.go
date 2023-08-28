@@ -71,3 +71,44 @@ func (chunkserver *Chunkserver) UpdateChunkRPC(
 	}
 	return nil
 }
+
+// AddNewChunkRPC is called by the master to add an empty chunk. If you
+// would like to copy a chunk from another chunkserver, use
+// CopyChunkRPC.
+func (chunkserver *Chunkserver) AddNewChunkRPC(
+	args gfs.AddNewChunkArgs,
+	reply *gfs.AddNewChunkReply,
+) error {
+	if args.ServerInfo != chunkserver.server {
+		reply.Successful = false
+		gfs.Log(
+			gfs.Error,
+			fmt.Sprintf(
+				"Chunkserver.AddNewChunkRPC: server info does not match, expected: %s, actual: %s",
+				args.ServerInfo.ServerAddr,
+				chunkserver.server.ServerAddr,
+			),
+		)
+		return errors.New("Chunkserver.AddNewChunkRPC: server info does not match")
+	}
+	chunkserver.chunksLock.RLock()
+	_, exists := chunkserver.chunks[args.ChunkHandle]
+	chunkserver.chunksLock.RUnlock()
+	if exists {
+		reply.Successful = false
+		gfs.Log(gfs.Error, "Chunkserver.AddNewChunkRPC: chunk already exists")
+		return errors.New("Chunkserver.AddNewChunkRPC: chunk already exists")
+	}
+	chunk, err := chunkserver.createChunk(args.ChunkHandle)
+	if err != nil {
+		reply.Successful = false
+		gfs.Log(gfs.Error, err.Error())
+		return err
+	}
+	chunkserver.chunksLock.Lock()
+	chunkserver.chunks[args.ChunkHandle] = chunk
+	chunkserver.chunksLock.Unlock()
+	reply.Successful = true
+	gfs.Log(gfs.Info, fmt.Sprintf("Chunkserver.AddNewChunkRPC: chunk %d added", args.ChunkHandle))
+	return nil
+}

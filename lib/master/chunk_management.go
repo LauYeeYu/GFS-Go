@@ -1,6 +1,7 @@
 package master
 
 import (
+	"container/heap"
 	"errors"
 	"fmt"
 	"gfs"
@@ -78,7 +79,7 @@ func (master *Master) grantLease(chunkHandle gfs.ChunkHandle) error {
 	updateErr = nil
 	count := 0
 	var updateLock sync.Mutex
-	for info, _ := range servers {
+	for info := range servers {
 		go func(server gfs.ServerInfo) {
 			reply := gfs.UpdateChunkReply{}
 			err := utils.RemoteCall(server, "Chunkserver.UpdateChunkRPC",
@@ -216,4 +217,100 @@ func (master *Master) revokeLease(chunkHandle gfs.ChunkHandle) error {
 	}
 	chunkserver.Unlock()
 	return nil
+}
+
+type dispatchInfo struct {
+	server          gfs.ServerInfo
+	numberOfChunks  int
+	chunkserverData *ChunkserverData
+}
+type dispatchQueue []*dispatchInfo
+
+func (pq dispatchQueue) Len() int { return len(pq) }
+func (pq dispatchQueue) Less(i, j int) bool {
+	return pq[i].numberOfChunks < pq[j].numberOfChunks
+}
+func (pq dispatchQueue) Swap(i, j int) { pq[i], pq[j] = pq[j], pq[i] }
+func (pq *dispatchQueue) Push(x any) {
+	*pq = append(*pq, x.(*dispatchInfo))
+}
+func (pq *dispatchQueue) Pop() any {
+	old := *pq
+	n := len(old)
+	x := old[n-1]
+	*pq = old[0 : n-1]
+	return x
+}
+
+// dispatchChunkToChunkserver dispatches a chunk to a couple of chunkservers.
+// The chunk will be dispatched to the chunkservers with the least number of
+// chunks. This implementation ignores a lot of factors.
+func (master *Master) dispatchChunkToChunkserver(
+	chunkHandle gfs.ChunkHandle, chunkMeta *ChunkMetadata,
+) {
+	master.chunkserversLock.RLock()
+	var dispatchList dispatchQueue = make([]*dispatchInfo, 0, len(master.chunkservers))
+	var dispatchListLock sync.Mutex
+	numberOfChunkservers := len(master.chunkservers)
+	for server, data := range master.chunkservers {
+		data.Lock()
+		dispatchList = append(dispatchList, &dispatchInfo{
+			server:          server,
+			numberOfChunks:  len(data.Chunks),
+			chunkserverData: data,
+		})
+		data.Unlock()
+	}
+	master.chunkserversLock.RUnlock()
+	heap.Init(&dispatchList)
+	chunkMeta.Lock()
+	numberOfReplicas := min(numberOfChunkservers, len(chunkMeta.Servers))
+	for i := 0; i < numberOfReplicas; i++ {
+		dispatchListLock.Lock()
+		server := heap.Pop(&dispatchList).(*dispatchInfo)
+		dispatchListLock.Unlock()
+		gfs.Log(gfs.Info, fmt.Sprintf("dispatching chunk %d to %v", chunkHandle, server.server.ServerAddr))
+		chunkMeta.Servers.Add(server.server)
+		server.chunkserverData.Lock()
+		server.chunkserverData.Chunks.Add(chunkHandle)
+		server.chunkserverData.Unlock()
+		go func(info *dispatchInfo) {
+			reply := gfs.AddNewChunkReply{}
+			err := utils.RemoteCall(info.server, "Chunkserver.AddNewChunkRPC",
+				gfs.AddNewChunkArgs{ServerInfo: info.server, ChunkHandle: chunkHandle},
+				&reply,
+			)
+			dispatchListLock.Lock()
+			for (err != nil || !reply.Successful) && len(dispatchList) > 0 {
+				newServer := heap.Pop(&dispatchList).(*dispatchInfo)
+				dispatchListLock.Unlock()
+				gfs.Log(gfs.Error,
+					fmt.Sprintf(
+						"dispatching chunk %d to %v failed",
+						chunkHandle, server.server.ServerAddr,
+					),
+				)
+				chunkMeta.Lock()
+				chunkMeta.Servers.Remove(info.server)
+				chunkMeta.Servers.Add(newServer.server)
+				chunkMeta.Unlock()
+				info.chunkserverData.Lock()
+				info.chunkserverData.Chunks.Remove(chunkHandle)
+				info.chunkserverData.Unlock()
+				newServer.chunkserverData.Lock()
+				newServer.chunkserverData.Chunks.Add(chunkHandle)
+				newServer.chunkserverData.Unlock()
+				err = utils.RemoteCall(newServer.server, "Chunkserver.AddNewChunkRPC",
+					gfs.AddNewChunkArgs{ServerInfo: newServer.server, ChunkHandle: chunkHandle},
+					&reply,
+				)
+				if err == nil && reply.Successful {
+					return
+				}
+				info = newServer
+				dispatchListLock.Lock()
+			}
+		}(server)
+	}
+	chunkMeta.Unlock()
 }

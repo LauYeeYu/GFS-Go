@@ -340,34 +340,36 @@ type AddChunkToFileOperationLogEntry struct {
 }
 
 func (entry *AddChunkToFileOperationLogEntry) Execute(master *Master) error {
-	chunk, err := entry.addChunkToFile(master)
+	chunk, newChunk, err := entry.addChunkToFile(master)
 	if err != nil {
 		return err
 	}
-	if chunk.Servers.Size() == 0 {
-		// TODO: dispatch chunk to servers
+	if newChunk {
+		go master.dispatchChunkToChunkserver(entry.Chunk, chunk)
 	}
 	return nil
 }
 
 func (entry *AddChunkToFileOperationLogEntry) Replay(master *Master) error {
-	_, err := entry.addChunkToFile(master)
+	_, _, err := entry.addChunkToFile(master)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (entry *AddChunkToFileOperationLogEntry) addChunkToFile(master *Master) (*ChunkMetadata, error) {
+// addChunkToFile adds a chunk to a file. It returns the chunk metadata and
+// whether the chunk is newly created.
+func (entry *AddChunkToFileOperationLogEntry) addChunkToFile(master *Master) (*ChunkMetadata, bool, error) {
 	master.namespacesLock.RLock()
 	namespaceMeta, exists := master.namespaces[entry.Namespace]
 	master.namespacesLock.RUnlock()
 	if !exists {
-		return nil, errors.New("namespace not found")
+		return nil, false, errors.New("namespace not found")
 	}
 	fileMeta, err := namespaceMeta.lockAndGetFile(entry.Pathname, false)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	fileMeta.Chunks = append(fileMeta.Chunks, entry.Chunk)
 	_ = namespaceMeta.UnlockFileOrDirectory(entry.Pathname, false)
@@ -385,10 +387,11 @@ func (entry *AddChunkToFileOperationLogEntry) addChunkToFile(master *Master) (*C
 		}
 		master.chunks[entry.Chunk] = chunk
 		master.chunksLock.Unlock()
+		return chunk, true, nil
 	} else {
 		chunk.RefCount++
+		return chunk, false, nil
 	}
-	return chunk, nil
 }
 
 type UpdateChunkVersionOperationLogEntry struct {
