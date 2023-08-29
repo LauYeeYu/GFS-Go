@@ -81,4 +81,5 @@ const (
 	NotPrimary
 	ExceedLengthOfChunk
 	Failed // Error caused by concurrent writes
+	TooLargeForRecordAppend
 )

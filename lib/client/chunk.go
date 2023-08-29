@@ -1,6 +1,7 @@
 package client
 
 import (
+	"errors"
 	"gfs"
 	"gfs/utils"
 	"math/rand"
@@ -82,4 +83,94 @@ func (replicaInfo *ReplicaInfo) GetOneReplica() (gfs.ServerInfo, bool) {
 		return gfs.ServerInfo{}, false
 	}
 	return replicaInfo.Locations[rand.Intn(len(replicaInfo.Locations))], true
+}
+
+// WriteChunk writes data to the chunk.
+// Return the number of status defined in gfs package and error.
+func (client *Client) WriteChunk(
+	handle gfs.ChunkHandle, offset gfs.Length, data []byte,
+) (int, error) {
+	replicaInfo, ok := client.getChunkReplicaInfo(handle, false)
+	if !ok {
+		return -1, errors.New("chunk is not in good status")
+	}
+	if replicaInfo.Primary == nil {
+		return -1, errors.New("chunk has no primary")
+	}
+	reply := gfs.WriteChunkReply{}
+	err := utils.RemoteCall(*replicaInfo.Primary, "Chunkserver.WriteChunkRPC",
+		gfs.WriteChunkArgs{
+			ServerInfo:     *replicaInfo.Primary,
+			ChunkHandle:    handle,
+			Offset:         offset,
+			Data:           data,
+			ChunkVersion:   replicaInfo.Version,
+			ServersToWrite: replicaInfo.Locations,
+		},
+		&reply,
+	)
+	if err != nil {
+		return -1, err
+	}
+	return reply.Status, nil
+}
+
+// ReadChunk reads data from the chunk.
+// Return the number of status defined in gfs package, data and error.
+func (client *Client) ReadChunk(
+	handle gfs.ChunkHandle, offset gfs.Length, length gfs.Length,
+) (int, []byte, error) {
+	replicaInfo, ok := client.getChunkReplicaInfo(handle, true)
+	if !ok {
+		return -1, nil, errors.New("chunk is not in good status")
+	}
+	if replicaInfo.Primary == nil {
+		return -1, nil, errors.New("chunk has no primary")
+	}
+	reply := gfs.ReadChunkReply{}
+	err := utils.RemoteCall(*replicaInfo.Primary, "Chunkserver.ReadChunkRPC",
+		gfs.ReadChunkArgs{
+			ChunkHandle:  handle,
+			Offset:       offset,
+			Length:       length,
+			ChunkVersion: replicaInfo.Version,
+		},
+		&reply,
+	)
+	if err != nil {
+		return -1, nil, err
+	}
+	return reply.Status, reply.Data, nil
+}
+
+// RecordAppendChunk appends data to the chunk.
+// Return the number of status defined in gfs package, offset and error.
+func (client *Client) RecordAppendChunk(
+	handle gfs.ChunkHandle, data []byte,
+) (int, gfs.Length, error) {
+	if gfs.Length(len(data))*4 > gfs.ChunkSize {
+		return gfs.TooLargeForRecordAppend, -1, nil
+	}
+	replicaInfo, ok := client.getChunkReplicaInfo(handle, false)
+	if !ok {
+		return -1, -1, errors.New("chunk is not in good status")
+	}
+	if replicaInfo.Primary == nil {
+		return -1, -1, errors.New("chunk has no primary")
+	}
+	reply := gfs.RecordAppendChunkReply{}
+	err := utils.RemoteCall(*replicaInfo.Primary, "Chunkserver.RecordAppendChunkRPC",
+		gfs.RecordAppendChunkArgs{
+			ServerInfo:     *replicaInfo.Primary,
+			ChunkHandle:    handle,
+			Data:           data,
+			ChunkVersion:   replicaInfo.Version,
+			ServersToWrite: replicaInfo.Locations,
+		},
+		&reply,
+	)
+	if err != nil {
+		return -1, -1, err
+	}
+	return reply.Status, reply.Offset, nil
 }
