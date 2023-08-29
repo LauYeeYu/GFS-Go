@@ -145,11 +145,6 @@ func (chunkserver *Chunkserver) ReadChunkRPC(
 		chunk.RUnlock()
 		return nil
 	}
-	if !chunk.IsPrimary() {
-		reply.Status = gfs.NotPrimary
-		chunk.RUnlock()
-		return nil
-	}
 	data := make([]byte, args.Length)
 	err := chunk.rangedRead(args.Offset, data)
 	chunk.RUnlock()
