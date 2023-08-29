@@ -105,6 +105,7 @@ type GetChunkReplicasArgs struct {
 type GetChunkReplicasReply struct {
 	Valid             bool
 	Orphan            bool
+	Version           ChunkVersion
 	Locations         []ServerInfo
 	HasPrimary        bool
 	Primary           ServerInfo

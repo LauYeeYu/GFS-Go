@@ -10,6 +10,7 @@ import (
 // ReplicaInfo info caches the replicas of a chunk.
 type ReplicaInfo struct {
 	ChunkHandle       gfs.ChunkHandle
+	Version           gfs.ChunkVersion
 	Locations         []gfs.ServerInfo
 	Primary           *gfs.ServerInfo
 	PrimaryExpireTime time.Time
@@ -61,6 +62,7 @@ func (client *Client) getChunkReplicaInfo(
 	}
 	replicaInfo = &ReplicaInfo{
 		ChunkHandle:       handle,
+		Version:           reply.Version,
 		Locations:         reply.Locations,
 		Primary:           primary,
 		PrimaryExpireTime: reply.PrimaryExpireTime,
