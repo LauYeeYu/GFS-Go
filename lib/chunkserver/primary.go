@@ -28,8 +28,7 @@ func (chunk *Chunk) leaseAboutToExpire() bool {
 // Return the result through the ReturnChan channel.
 func (chunk *Chunk) handleWriteRequest(request *WriteRequest) {
 	chunk.Lock()
-	chunk.flushLease()
-	if !chunk.isPrimary {
+	if !chunk.IsPrimary() {
 		chunk.Unlock()
 		request.ReturnChan <- errors.New(
 			"Chunk.handleWriteRequest: not primary",
@@ -47,8 +46,7 @@ func (chunk *Chunk) handleWriteRequest(request *WriteRequest) {
 		chunk.Unlock()
 		_ = chunk.extendLease(chunk.chunkserver)
 		chunk.Lock()
-		chunk.flushLease()
-		if !chunk.isPrimary {
+		if !chunk.IsPrimary() {
 			chunk.Unlock()
 			request.ReturnChan <- errors.New(
 				"Chunk.handleWriteRequest: not primary",
@@ -151,9 +149,6 @@ func (chunkserver *Chunkserver) ReceiveLeaseRPC(
 }
 
 func (chunk *Chunk) extendLease(chunkserver *Chunkserver) error {
-	chunk.Lock()
-	defer chunk.Unlock()
-	chunk.flushLease()
 	reply := gfs.ExtendLeaseReply{}
 	gfs.Log(gfs.Info, fmt.Sprintf(
 		"Chunkserver.extendLease: %v tries to extend lease of chunk %d",
@@ -183,7 +178,9 @@ func (chunk *Chunk) extendLease(chunkserver *Chunkserver) error {
 			"Chunkserver.extendLease: lease extension for %d accepted",
 			chunk.handle,
 		))
+		chunk.Lock()
 		chunk.leaseExpireTime = reply.NewExpire
+		chunk.Unlock()
 		return nil
 	}
 }

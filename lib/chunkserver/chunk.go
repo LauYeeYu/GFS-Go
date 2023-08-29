@@ -113,13 +113,13 @@ func (chunk *Chunk) read() ([]byte, error) {
 	return data, nil
 }
 
-// flushLease flushes the lease status of the chunk
+// IsPrimary flushes the lease status of the chunk
 // Note: this function is not concurrency-safe.
-func (chunk *Chunk) flushLease() {
+func (chunk *Chunk) IsPrimary() bool {
 	if chunk.isPrimary {
-		if chunk.leaseExpireTime.Before(time.Now()) {
-			chunk.isPrimary = false
-		}
+		return chunk.leaseExpireTime.After(time.Now())
+	} else {
+		return false
 	}
 }
 
