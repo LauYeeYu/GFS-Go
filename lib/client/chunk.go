@@ -21,17 +21,26 @@ type ReplicaInfo struct {
 // The function will check whether the cached replica info is expired.
 // If the cached replica info is expired, the function will delete the
 // cached replica info and return false.
-func (client *Client) getReplicaInfoCache(handle gfs.ChunkHandle) (*ReplicaInfo, bool) {
+func (client *Client) getReplicaInfoCache(
+	handle gfs.ChunkHandle, needPrimary bool,
+) (*ReplicaInfo, bool) {
 	replicaInfo, ok := client.replicaCache[handle]
-	if ok && replicaInfo.Expired() {
-		delete(client.replicaCache, handle)
-		ok = false
+	if ok {
+		if needPrimary && replicaInfo.PrimaryExpired() {
+			delete(client.replicaCache, handle)
+			return nil, false
+		}
+		return replicaInfo, true
 	}
-	return replicaInfo, ok
+	return nil, false
 }
 
-func (replicaInfo *ReplicaInfo) Expired() bool {
-	return time.Now().After(replicaInfo.PrimaryExpireTime)
+func (replicaInfo *ReplicaInfo) PrimaryExpired() bool {
+	if replicaInfo.Primary == nil {
+		return true
+	} else {
+		return time.Now().After(replicaInfo.PrimaryExpireTime)
+	}
 }
 
 // getChunkReplicaInfo returns the replica info of the chunk and whether the
@@ -41,7 +50,7 @@ func (client *Client) getChunkReplicaInfo(
 	handle gfs.ChunkHandle, readOnly bool,
 ) (*ReplicaInfo, bool) {
 	client.replicaLock.Lock()
-	replicaInfo, ok := client.getReplicaInfoCache(handle)
+	replicaInfo, ok := client.getReplicaInfoCache(handle, !readOnly)
 	client.replicaLock.Unlock()
 	if ok {
 		return replicaInfo, len(replicaInfo.Locations) > 0
