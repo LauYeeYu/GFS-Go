@@ -123,11 +123,13 @@ type GetFileChunksReply struct {
 }
 
 type GetChunkSizeArgs struct {
-	ChunkHandle ChunkHandle
+	ChunkHandle  ChunkHandle
+	ChunkVersion ChunkVersion
 }
 
 type GetChunkSizeReply struct {
-	Size Length // -1 if not exist
+	Size         Length // -1 if not exist
+	WrongVersion bool
 }
 
 type AddNewChunkArgs struct {

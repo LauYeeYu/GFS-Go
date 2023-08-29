@@ -13,9 +13,10 @@ func (chunkserver *Chunkserver) GetChunkSizeRPC(
 		reply.Size = -1
 		return nil
 	}
-	chunk.Lock()
+	chunk.RLock()
 	reply.Size = chunk.length()
-	chunk.Unlock()
+	reply.WrongVersion = chunk.version != args.ChunkVersion
+	chunk.RUnlock()
 	return nil
 }
 
