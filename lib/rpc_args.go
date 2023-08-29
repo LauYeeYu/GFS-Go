@@ -138,3 +138,24 @@ type AddNewChunkArgs struct {
 type AddNewChunkReply struct {
 	Successful bool
 }
+
+type WriteChunkArgs struct {
+	ServerInfo   ServerInfo
+	ChunkHandle  ChunkHandle
+	Offset       Length
+	Data         []byte
+	ChunkVersion ChunkVersion
+}
+
+const (
+	WriteSuccessful = iota
+	WriteChunkNotExist
+	WriteChunkVersionNotMatch
+	WriteNotPrimary
+	WriteExceedLengthOfChunk
+	WriteFailed // Error caused by concurrent writes
+)
+
+type WriteChunkReply struct {
+	Status int
+}
