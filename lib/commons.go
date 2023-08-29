@@ -71,3 +71,14 @@ type FatalError struct {
 func NewFatalError(err error) *FatalError {
 	return &FatalError{err}
 }
+
+// Chunk-client status
+const (
+	Successful = iota
+	WrongServer
+	ChunkNotExist
+	ChunkVersionNotMatch
+	NotPrimary
+	ExceedLengthOfChunk
+	Failed // Error caused by concurrent writes
+)

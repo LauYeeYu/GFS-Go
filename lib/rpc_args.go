@@ -150,16 +150,6 @@ type WriteChunkArgs struct {
 	ServersToWrite []ServerInfo
 }
 
-const (
-	Successful = iota
-	WrongServer
-	ChunkNotExist
-	ChunkVersionNotMatch
-	NotPrimary
-	ExceedLengthOfChunk
-	Failed // Error caused by concurrent writes
-)
-
 type WriteChunkReply struct {
 	Status int
 }
