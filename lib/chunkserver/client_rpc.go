@@ -23,30 +23,33 @@ func (chunkserver *Chunkserver) WriteChunkRPC(
 	args gfs.WriteChunkArgs,
 	reply *gfs.WriteChunkReply,
 ) error {
+	if chunkserver.server != args.ServerInfo {
+		reply.Status = gfs.WrongServer
+		return nil
+	}
 	if args.Offset+gfs.Length(len(args.Data)) > gfs.ChunkSize {
-		reply.Status = gfs.WriteExceedLengthOfChunk
+		reply.Status = gfs.ExceedLengthOfChunk
 		return nil
 	}
 	chunkserver.chunksLock.Lock()
 	chunk, exist := chunkserver.chunks[args.ChunkHandle]
 	chunkserver.chunksLock.Unlock()
 	if !exist {
-		reply.Status = gfs.WriteChunkNotExist
+		reply.Status = gfs.ChunkNotExist
 		return nil
 	}
-	chunk.Lock()
+	chunk.RLock()
 	if chunk.version != args.ChunkVersion {
-		reply.Status = gfs.WriteChunkVersionNotMatch
-		chunk.Unlock()
+		reply.Status = gfs.ChunkVersionNotMatch
+		chunk.RUnlock()
 		return nil
 	}
-	chunk.flushLease()
-	if !chunk.isPrimary {
-		reply.Status = gfs.WriteNotPrimary
-		chunk.Unlock()
+	if !chunk.IsPrimary() {
+		reply.Status = gfs.NotPrimary
+		chunk.RUnlock()
 		return nil
 	}
-	chunk.Unlock()
+	chunk.RUnlock()
 	writeRequest := WriteRequest{
 		ChunkHandle:         args.ChunkHandle,
 		Offset:              args.Offset,
@@ -58,9 +61,55 @@ func (chunkserver *Chunkserver) WriteChunkRPC(
 	chunk.writeChannel.In <- &writeRequest
 	err := <-writeRequest.ReturnChan
 	if err != nil {
-		reply.Status = gfs.WriteFailed
+		reply.Status = gfs.Failed
 	} else {
-		reply.Status = gfs.WriteSuccessful
+		reply.Status = gfs.Successful
 	}
+	return nil
+}
+
+// ReadChunkRPC is used by the client to read data from a chunk. This
+// operation guarantees that the data is complete and consistent. It
+// happens without write operations doing at the same time on the same
+// chunk.
+//
+// Note: Read chunk operation won't synchronise with write chunk operation.
+// If you would like to make sure that the read operation happens after
+// the write operation, you should read after the write operation returns.
+func (chunkserver *Chunkserver) ReadChunkRPC(
+	args gfs.ReadChunkArgs,
+	reply *gfs.ReadChunkReply,
+) error {
+	if chunkserver.server != args.ServerInfo {
+		reply.Status = gfs.WrongServer
+		return nil
+	}
+	chunkserver.chunksLock.Lock()
+	chunk, exist := chunkserver.chunks[args.ChunkHandle]
+	chunkserver.chunksLock.Unlock()
+	if !exist {
+		reply.Status = gfs.ChunkNotExist
+		return nil
+	}
+	chunk.RLock()
+	if chunk.version != args.ChunkVersion {
+		reply.Status = gfs.ChunkVersionNotMatch
+		chunk.RUnlock()
+		return nil
+	}
+	if !chunk.IsPrimary() {
+		reply.Status = gfs.NotPrimary
+		chunk.RUnlock()
+		return nil
+	}
+	data := make([]byte, args.Length)
+	err := chunk.rangedRead(args.Offset, data)
+	chunk.RUnlock()
+	if err != nil {
+		reply.Status = gfs.Failed
+		return nil
+	}
+	reply.Status = gfs.Successful
+	reply.Data = data
 	return nil
 }

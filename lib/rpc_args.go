@@ -148,14 +148,28 @@ type WriteChunkArgs struct {
 }
 
 const (
-	WriteSuccessful = iota
-	WriteChunkNotExist
-	WriteChunkVersionNotMatch
-	WriteNotPrimary
-	WriteExceedLengthOfChunk
-	WriteFailed // Error caused by concurrent writes
+	Successful = iota
+	WrongServer
+	ChunkNotExist
+	ChunkVersionNotMatch
+	NotPrimary
+	ExceedLengthOfChunk
+	Failed // Error caused by concurrent writes
 )
 
 type WriteChunkReply struct {
 	Status int
+}
+
+type ReadChunkArgs struct {
+	ServerInfo   ServerInfo
+	ChunkHandle  ChunkHandle
+	Offset       Length
+	Length       Length
+	ChunkVersion ChunkVersion
+}
+
+type ReadChunkReply struct {
+	Status int
+	Data   []byte
 }
