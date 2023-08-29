@@ -140,11 +140,12 @@ type AddNewChunkReply struct {
 }
 
 type WriteChunkArgs struct {
-	ServerInfo   ServerInfo
-	ChunkHandle  ChunkHandle
-	Offset       Length
-	Data         []byte
-	ChunkVersion ChunkVersion
+	ServerInfo     ServerInfo
+	ChunkHandle    ChunkHandle
+	Offset         Length
+	Data           []byte
+	ChunkVersion   ChunkVersion
+	ServersToWrite []ServerInfo
 }
 
 const (
@@ -159,6 +160,19 @@ const (
 
 type WriteChunkReply struct {
 	Status int
+}
+
+type RecordAppendChunkArgs struct {
+	ServerInfo     ServerInfo
+	ChunkHandle    ChunkHandle
+	Data           []byte
+	ChunkVersion   ChunkVersion
+	ServersToWrite []ServerInfo
+}
+
+type RecordAppendChunkReply struct {
+	Status int
+	Offset Length
 }
 
 type ReadChunkArgs struct {

@@ -54,16 +54,64 @@ func (chunkserver *Chunkserver) WriteChunkRPC(
 		ChunkHandle:         args.ChunkHandle,
 		Offset:              args.Offset,
 		Data:                args.Data,
-		ServersToWrite:      make([]gfs.ServerInfo, 0),
+		ServersToWrite:      args.ServersToWrite,
 		ReturnChan:          make(chan error),
 		ExceedLengthOfChunk: false,
 	}
 	chunk.writeChannel.In <- &writeRequest
 	err := <-writeRequest.ReturnChan
 	if err != nil {
+		gfs.Log(gfs.Error, err.Error())
 		reply.Status = gfs.Failed
 	} else {
 		reply.Status = gfs.Successful
+	}
+	return nil
+}
+
+func (chunkserver *Chunkserver) RecordAppendChunkRPC(
+	args gfs.RecordAppendChunkArgs,
+	reply *gfs.RecordAppendChunkReply,
+) error {
+	if chunkserver.server != args.ServerInfo {
+		reply.Status = gfs.WrongServer
+		return nil
+	}
+	chunkserver.chunksLock.Lock()
+	chunk, exist := chunkserver.chunks[args.ChunkHandle]
+	chunkserver.chunksLock.Unlock()
+	if !exist {
+		reply.Status = gfs.ChunkNotExist
+		return nil
+	}
+	chunk.RLock()
+	if chunk.version != args.ChunkVersion {
+		reply.Status = gfs.ChunkVersionNotMatch
+		chunk.RUnlock()
+		return nil
+	}
+	if !chunk.IsPrimary() {
+		reply.Status = gfs.NotPrimary
+		chunk.RUnlock()
+		return nil
+	}
+	chunk.RUnlock()
+	writeRequest := WriteRequest{
+		ChunkHandle:         args.ChunkHandle,
+		Offset:              -1,
+		Data:                args.Data,
+		ServersToWrite:      args.ServersToWrite,
+		ReturnChan:          make(chan error),
+		ExceedLengthOfChunk: false,
+	}
+	chunk.writeChannel.In <- &writeRequest
+	err := <-writeRequest.ReturnChan
+	if err != nil {
+		gfs.Log(gfs.Error, err.Error())
+		reply.Status = gfs.Failed
+	} else {
+		reply.Status = gfs.Successful
+		reply.Offset = writeRequest.Offset
 	}
 	return nil
 }
