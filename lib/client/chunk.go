@@ -35,6 +35,12 @@ func (client *Client) getReplicaInfoCache(
 	return nil, false
 }
 
+func (client *Client) removeReplicaInfoCache(handle gfs.ChunkHandle) {
+	if _, ok := client.replicaCache[handle]; ok {
+		delete(client.replicaCache, handle)
+	}
+}
+
 func (replicaInfo *ReplicaInfo) PrimaryExpired() bool {
 	if replicaInfo.Primary == nil {
 		return true
@@ -95,9 +101,13 @@ func (replicaInfo *ReplicaInfo) GetOneReplica() (gfs.ServerInfo, bool) {
 }
 
 // WriteChunk writes data to the chunk.
+// retries is the number of retries. If retries is no more than 0, the function
+// will not retry. Otherwise, the function will retry until succeed or the
+// number of retries is used up.
+//
 // Return the number of status defined in gfs package and error.
 func (client *Client) WriteChunk(
-	handle gfs.ChunkHandle, offset gfs.Length, data []byte,
+	handle gfs.ChunkHandle, offset gfs.Length, data []byte, retries int,
 ) (int, error) {
 	replicaInfo, ok := client.getChunkReplicaInfo(handle, false)
 	if !ok {
@@ -118,6 +128,13 @@ func (client *Client) WriteChunk(
 		},
 		&reply,
 	)
+	if retries > 0 && (err != nil || reply.Status != gfs.Successful) {
+		gfs.Log(gfs.Warning, "retrying write chunk %d", handle)
+		client.replicaLock.Lock()
+		client.removeReplicaInfoCache(handle)
+		client.replicaLock.Unlock()
+		return client.WriteChunk(handle, offset, data, retries-1)
+	}
 	if err != nil {
 		return -1, err
 	}
@@ -125,9 +142,13 @@ func (client *Client) WriteChunk(
 }
 
 // ReadChunk reads data from the chunk.
+// retries is the number of retries. If retries is no more than 0, the function
+// will not retry. Otherwise, the function will retry until succeed or the
+// number of retries is used up.
+//
 // Return the number of status defined in gfs package, data and error.
 func (client *Client) ReadChunk(
-	handle gfs.ChunkHandle, offset gfs.Length, length gfs.Length,
+	handle gfs.ChunkHandle, offset gfs.Length, length gfs.Length, retries int,
 ) (int, []byte, error) {
 	replicaInfo, ok := client.getChunkReplicaInfo(handle, true)
 	if !ok {
@@ -146,6 +167,13 @@ func (client *Client) ReadChunk(
 		},
 		&reply,
 	)
+	if retries > 0 && (err != nil || reply.Status != gfs.Successful) {
+		gfs.Log(gfs.Warning, "retrying read chunk %d", handle)
+		client.replicaLock.Lock()
+		client.removeReplicaInfoCache(handle)
+		client.replicaLock.Unlock()
+		return client.ReadChunk(handle, offset, length, retries-1)
+	}
 	if err != nil {
 		return -1, nil, err
 	}
@@ -153,9 +181,13 @@ func (client *Client) ReadChunk(
 }
 
 // RecordAppendChunk appends data to the chunk.
+// retries is the number of retries. If retries is no more than 0, the function
+// will not retry. Otherwise, the function will retry until succeed or the
+// number of retries is used up.
+//
 // Return the number of status defined in gfs package, offset and error.
 func (client *Client) RecordAppendChunk(
-	handle gfs.ChunkHandle, data []byte,
+	handle gfs.ChunkHandle, data []byte, retries int,
 ) (int, gfs.Length, error) {
 	if gfs.Length(len(data))*4 > gfs.ChunkSize {
 		return gfs.TooLargeForRecordAppend, -1, nil
@@ -178,6 +210,13 @@ func (client *Client) RecordAppendChunk(
 		},
 		&reply,
 	)
+	if retries > 0 && (err != nil || reply.Status != gfs.Successful) {
+		gfs.Log(gfs.Warning, "retrying record append chunk %d", handle)
+		client.replicaLock.Lock()
+		client.removeReplicaInfoCache(handle)
+		client.replicaLock.Unlock()
+		return client.RecordAppendChunk(handle, data, retries-1)
+	}
 	if err != nil {
 		return -1, -1, err
 	}
