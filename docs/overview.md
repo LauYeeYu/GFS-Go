@@ -37,6 +37,30 @@ to give it instructions and collect its state.
 The master uses operation log to recover the state. See the
 [operation log section](master.md#operation-log) for more details.
 
+### Lease and Chunk Versioning
+
+The design of lease and chunk version doesn't look reasonable until we go deep
+into the details of the system. The paper says, "The lease mechanism is
+designed to minimize management overhead at the master." But why and how? Let
+me explain this in detail.
+
+For the GFS, the most often write pattern is one client writes multiple times
+on the same chunk, at least the paper thinks so. Thus, before the lease
+expires, the client will contact the master only once. This reduces the load
+on master dramatically. Even if multiple clients write to the same chunk, the
+lease mechanism works better than without lease because the master only needs
+to contact the replicas once.
+
+Then comes the chunk versioning. You may ask why we need such strange
+versioning strategy. The versioning strategy cannot guarantee the consistency,
+of course. It is actually designate for the copy-on-write scheme. When the
+master grants lease, they must make sure that the reference count is exactly
+one. If not, it will let the replica copy the chunk before granting the lease.
+Note that after this operation, some client may still know the old chunk
+handle. This will cause the client to read the wrong chunk. With versioning,
+the chunkserver can easily detect this problem and report this to the client,
+and then the client will get the up-to-data information from the master.
+
 ## Metadata
 
 The master stores three major types of metadata:
