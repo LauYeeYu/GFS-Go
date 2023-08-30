@@ -210,7 +210,8 @@ func (client *Client) RecordAppendChunk(
 		},
 		&reply,
 	)
-	if retries > 0 && (err != nil || reply.Status != gfs.Successful) {
+	if retries > 0 &&
+		(err != nil || (reply.Status != gfs.Successful && reply.Status != gfs.ExceedLengthOfChunk)) {
 		gfs.Log(gfs.Warning, "retrying record append chunk %d", handle)
 		client.replicaLock.Lock()
 		client.removeReplicaInfoCache(handle)
