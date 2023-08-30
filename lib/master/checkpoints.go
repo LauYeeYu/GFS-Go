@@ -149,7 +149,9 @@ func GetLastCheckpoint(serverInfo gfs.ServerInfo, masterRoot string) (*Master, i
 }
 
 func RecoverFromLog(serverInfo gfs.ServerInfo, masterRoot string) (*Master, error) {
-	index, err := utils.ReadTextInt64FromFile(utils.MergePath(masterRoot, gfs.LogIndexName))
+	index, err := utils.ReadTextInt64FromFile(utils.MergePath(
+		masterRoot, fmt.Sprintf("%s/%s", gfs.LogDirName, gfs.LogIndexName),
+	))
 	if err != nil {
 		return nil, err
 	}
