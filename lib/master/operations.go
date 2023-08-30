@@ -48,6 +48,12 @@ type LogEntry interface {
 	Replay(master *Master) error
 }
 
+// appendLog appends a log to the log file and execute the log by calling
+// the Execute() method.
+//
+// Note: Although the Execute() method should check whether the log is valid
+// before executing it, it is not recommended to call this function without
+// checking the validity of the log because appending log is relatively slower.
 func (master *Master) appendLog(log OperationLogEntryHeader, entry LogEntry) error {
 	// Write the log to the log file
 	master.operationLogLock.Lock()
