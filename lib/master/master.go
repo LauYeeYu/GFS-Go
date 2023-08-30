@@ -42,6 +42,17 @@ type Master struct {
 	shutdown chan struct{}
 }
 
+func MakeAndStartMaster(server gfs.ServerInfo, storageDir string) (*Master, error) {
+	master, err := PrepareMaster(server, storageDir)
+	if err != nil {
+		return nil, err
+	}
+	if err = master.Start(); err != nil {
+		return nil, err
+	}
+	return master, nil
+}
+
 func (master *Master) getNextChunkHandle() gfs.ChunkHandle {
 	master.nextChunkLock.Lock()
 	handle := master.nextChunkHandle
