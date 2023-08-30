@@ -42,6 +42,14 @@ type Master struct {
 	shutdown chan struct{}
 }
 
+func (master *Master) getNextChunkHandle() gfs.ChunkHandle {
+	master.nextChunkLock.Lock()
+	handle := master.nextChunkHandle
+	master.nextChunkHandle++
+	defer master.nextChunkLock.Unlock()
+	return handle
+}
+
 func PrepareMaster(server gfs.ServerInfo, storageDir string) (*Master, error) {
 	// Prepare for the environment
 	err := os.MkdirAll(storageDir, 0755)

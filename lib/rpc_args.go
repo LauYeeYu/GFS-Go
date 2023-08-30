@@ -189,3 +189,14 @@ type CreateFileReply struct {
 	Successful bool
 	ErrorMsg   string
 }
+
+type AddNewChunkToFileArgs struct {
+	Namespace Namespace
+	Filename  string
+}
+
+type AddNewChunkToFileReply struct {
+	Successful bool
+	Chunk      ChunkHandle
+	ErrorMsg   string
+}

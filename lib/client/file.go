@@ -101,3 +101,21 @@ func (client *Client) CreateFile(namespace gfs.Namespace, filename string) error
 		return errors.New("invalid request")
 	}
 }
+
+func (client *Client) AddNewChunkToFile(namespace gfs.Namespace, filename string) error {
+	reply := gfs.AddNewChunkToFileReply{}
+	err := utils.RemoteCall(
+		client.master, "Master.AddNewChunkToFileRPC",
+		gfs.AddNewChunkToFileArgs{Namespace: namespace, Filename: filename},
+		&reply,
+	)
+	if err != nil {
+		return err
+	}
+	if reply.Successful {
+		return nil
+	} else {
+		gfs.Log(gfs.Error, fmt.Sprintf("AddNewChunkToFile error: %s", reply.ErrorMsg))
+		return errors.New("invalid request")
+	}
+}
