@@ -264,7 +264,7 @@ func (master *Master) dispatchChunkToChunkserver(
 	master.chunkserversLock.RUnlock()
 	heap.Init(&dispatchList)
 	chunkMeta.Lock()
-	numberOfReplicas := min(numberOfChunkservers, len(chunkMeta.Servers))
+	numberOfReplicas := min(gfs.NumberOfReplicas, numberOfChunkservers)
 	for i := 0; i < numberOfReplicas; i++ {
 		dispatchListLock.Lock()
 		server := heap.Pop(&dispatchList).(*dispatchInfo)

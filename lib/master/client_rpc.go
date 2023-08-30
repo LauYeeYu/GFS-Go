@@ -2,6 +2,7 @@ package master
 
 import (
 	"errors"
+	"fmt"
 	"gfs"
 )
 
@@ -51,7 +52,7 @@ func (master *Master) GetChunkReplicasRPC(
 		reply.Orphan = true
 		reply.HasPrimary = false
 		reply.Locations = []gfs.ServerInfo{}
-		gfs.Log(gfs.Warning, "chunk %d is orphan", args.ChunkHandle)
+		gfs.Log(gfs.Warning, fmt.Sprintf("chunk %d is orphan", args.ChunkHandle))
 		return errors.New("chunk has no replicas")
 	}
 	if chunk.hasLeaseHolder() {
