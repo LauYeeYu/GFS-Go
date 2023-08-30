@@ -51,9 +51,10 @@ func (master *Master) GetChunkReplicasRPC(
 	master.chunksLock.RUnlock()
 	if !exist {
 		reply.Valid = false
-		return errors.New("chunk does not exist")
+		return nil
 	}
 	chunk.RLock()
+	reply.Shared = chunk.RefCount > 1
 	if chunk.Servers.Empty() {
 		reply.Version = chunk.Version
 		chunk.Unlock()
@@ -62,7 +63,16 @@ func (master *Master) GetChunkReplicasRPC(
 		reply.HasPrimary = false
 		reply.Locations = []gfs.ServerInfo{}
 		gfs.Log(gfs.Warning, fmt.Sprintf("chunk %d is orphan", args.ChunkHandle))
-		return errors.New("chunk has no replicas")
+		return nil
+	}
+	if chunk.RefCount > 1 {
+		reply.Locations = chunk.Servers.ToSlice()
+		reply.Version = chunk.Version
+		chunk.Unlock()
+		reply.Valid = true
+		reply.Orphan = false
+		reply.HasPrimary = false
+		return nil
 	}
 	if chunk.hasLeaseHolder() {
 		reply.Locations = chunk.Servers.ToSlice()
@@ -98,7 +108,7 @@ func (master *Master) GetChunkReplicasRPC(
 		chunk.RUnlock()
 		reply.Valid = false
 		gfs.Log(gfs.Warning, "chunk has no lease holder")
-		return errors.New("no lease holder")
+		return nil
 	}
 	reply.Valid = true
 	reply.Orphan = false

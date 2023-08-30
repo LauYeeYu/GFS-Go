@@ -105,6 +105,7 @@ type GetChunkReplicasArgs struct {
 type GetChunkReplicasReply struct {
 	Valid             bool
 	Orphan            bool
+	Shared            bool // If true, the chunk is shared by multiple files
 	Version           ChunkVersion
 	Locations         []ServerInfo
 	HasPrimary        bool

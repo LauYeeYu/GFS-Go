@@ -46,8 +46,8 @@ func (master *Master) reduceChunkRef(chunk gfs.ChunkHandle) error {
 func (master *Master) grantLease(chunkHandle gfs.ChunkHandle) error {
 	master.chunksLock.Lock()
 	chunk, ok := master.chunks[chunkHandle]
+	master.chunksLock.Unlock()
 	if !ok {
-		master.chunksLock.Unlock()
 		return errors.New(fmt.Sprintf("chunk %d does not exist", chunkHandle))
 	}
 
@@ -55,23 +55,24 @@ func (master *Master) grantLease(chunkHandle gfs.ChunkHandle) error {
 	chunk.RLock()
 	if chunk.hasLeaseHolder() {
 		chunk.RUnlock()
-		master.chunksLock.Unlock()
 		return errors.New(fmt.Sprintf("chunk %d already has lease", chunkHandle))
 	}
 	if len(chunk.Servers) == 0 {
 		chunk.RUnlock()
-		master.chunksLock.Unlock()
 		return errors.New(fmt.Sprintf("chunk %d has no replica", chunkHandle))
 	}
+	if chunk.RefCount > 1 {
+		chunk.RUnlock()
+		return errors.New(fmt.Sprintf("chunk %d is shared", chunkHandle))
+	}
 	chunk.LeaseLock.Lock()
-	master.chunkserversLock.RLock()
 	defer chunk.LeaseLock.Unlock()
+	master.chunkserversLock.RLock()
 	servers := make(map[gfs.ServerInfo]*ChunkserverData)
 	for server := range chunk.Servers {
 		servers[server] = master.chunkservers[server]
 	}
 	master.chunkserversLock.RUnlock()
-	master.chunksLock.Unlock()
 	version := chunk.Version
 	chunk.RUnlock()
 	finished := make(chan struct{})
