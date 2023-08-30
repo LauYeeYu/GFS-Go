@@ -2,6 +2,7 @@ package client
 
 import (
 	"errors"
+	"fmt"
 	"gfs"
 	"gfs/utils"
 )
@@ -80,5 +81,23 @@ func (client *Client) getFileSize(file *File) (gfs.Length, error) {
 		return -1, err
 	} else {
 		return gfs.Length(len(chunks))*gfs.ChunkSize + reply.Size, nil
+	}
+}
+
+func (client *Client) CreateFile(namespace gfs.Namespace, filename string) error {
+	reply := gfs.CreateFileReply{}
+	err := utils.RemoteCall(
+		client.master, "Master.CreateFileRPC",
+		gfs.CreateFileArgs{Namespace: namespace, Filename: filename},
+		&reply,
+	)
+	if err != nil {
+		return err
+	}
+	if reply.Successful {
+		return nil
+	} else {
+		gfs.Log(gfs.Error, fmt.Sprintf("CreateFile error: %s", reply.ErrorMsg))
+		return errors.New("invalid request")
 	}
 }

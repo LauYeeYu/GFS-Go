@@ -124,3 +124,40 @@ func (master *Master) GetFileChunksRPC(
 	_ = namespace.UnlockFileOrDirectory(args.Filename, true)
 	return nil
 }
+
+func (master *Master) CreateFileRPC(
+	args gfs.CreateFileArgs,
+	reply *gfs.CreateFileReply,
+) error {
+	master.namespacesLock.RLock()
+	namespace, exist := master.namespaces[args.Namespace]
+	master.namespacesLock.RUnlock()
+	if !exist {
+		reply.Successful = false
+		reply.ErrorMsg = "namespace does not exist"
+		return nil
+	}
+	namespace.Lock()
+	_, err := namespace.lockAndGetFile(args.Filename, true)
+	namespace.Unlock()
+	if err == nil {
+		reply.Successful = false
+		reply.ErrorMsg = "file already exists"
+		return nil
+	}
+	err = master.appendLog(
+		MakeOperationLogEntryHeader(AddFileOperation),
+		&AddFileOperationLogEntry{
+			Namespace: args.Namespace,
+			Pathname:  args.Filename,
+		},
+	)
+	if err != nil {
+		reply.Successful = false
+		reply.ErrorMsg = err.Error()
+		return nil
+	}
+	reply.Successful = true
+	reply.ErrorMsg = ""
+	return nil
+}

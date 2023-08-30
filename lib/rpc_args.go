@@ -179,3 +179,13 @@ type ReadChunkReply struct {
 	Status int
 	Data   []byte
 }
+
+type CreateFileArgs struct {
+	Namespace Namespace
+	Filename  string
+}
+
+type CreateFileReply struct {
+	Successful bool
+	ErrorMsg   string
+}
