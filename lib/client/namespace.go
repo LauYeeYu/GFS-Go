@@ -31,11 +31,11 @@ func (client *Client) NamespaceExists(namespace gfs.Namespace) (bool, error) {
 	return reply.Exists, nil
 }
 
-func (client *Client) MakeNamespace(namespace gfs.Namespace) error {
-	reply := gfs.MakeNamespaceReply{}
+func (client *Client) CreateNamespace(namespace gfs.Namespace) error {
+	reply := gfs.CreateNamespaceReply{}
 	err := utils.RemoteCall(
-		client.master, "Master.MakeNamespaceRPC",
-		gfs.MakeNamespaceArgs{Namespace: namespace},
+		client.master, "Master.CreateNamespaceRPC",
+		gfs.CreateNamespaceArgs{Namespace: namespace},
 		&reply,
 	)
 	if err != nil {

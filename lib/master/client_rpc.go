@@ -16,9 +16,9 @@ func (master *Master) NamespaceExistsRPC(
 	return nil
 }
 
-func (master *Master) MakeNamespaceRPC(
-	args gfs.MakeNamespaceArgs,
-	reply *gfs.MakeNamespaceReply,
+func (master *Master) CreateNamespaceRPC(
+	args gfs.CreateNamespaceArgs,
+	reply *gfs.CreateNamespaceReply,
 ) error {
 	master.namespacesLock.Lock()
 	_, exists := master.namespaces[args.Namespace]
@@ -156,8 +156,8 @@ func (master *Master) CreateFileRPC(
 		return nil
 	}
 	err = master.appendLog(
-		MakeOperationLogEntryHeader(AddFileOperation),
-		&AddFileOperationLogEntry{
+		MakeOperationLogEntryHeader(CreateFileOperation),
+		&CreateFileOperationLogEntry{
 			Namespace: args.Namespace,
 			Pathname:  args.Filename,
 		},

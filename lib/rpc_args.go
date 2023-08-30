@@ -88,11 +88,11 @@ type NamespaceExistsReply struct {
 	Exists bool
 }
 
-type MakeNamespaceArgs struct {
+type CreateNamespaceArgs struct {
 	Namespace Namespace
 }
 
-type MakeNamespaceReply struct {
+type CreateNamespaceReply struct {
 	Success bool
 	Message string
 }

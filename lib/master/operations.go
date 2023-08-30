@@ -16,7 +16,7 @@ const (
 	CreateNamespaceOperation
 
 	// For files
-	AddFileOperation
+	CreateFileOperation
 	DeleteFileOperation
 	MoveFileOperation
 	SnapshotOperation
@@ -142,8 +142,8 @@ func (master *Master) replayLog(logIndex int64) error {
 			return err
 		}
 		_ = entry.Replay(master)
-	case AddFileOperation:
-		var entry AddFileOperationLogEntry
+	case CreateFileOperation:
+		var entry CreateFileOperationLogEntry
 		if err = decoder.Decode(&entry); err != nil {
 			return err
 		}
@@ -208,12 +208,12 @@ func (entry *CreateNamespaceOperationLogEntry) Replay(master *Master) error {
 	return entry.Execute(master)
 }
 
-type AddFileOperationLogEntry struct {
+type CreateFileOperationLogEntry struct {
 	Namespace gfs.Namespace
 	Pathname  string
 }
 
-func (entry *AddFileOperationLogEntry) Execute(master *Master) error {
+func (entry *CreateFileOperationLogEntry) Execute(master *Master) error {
 	master.namespacesLock.RLock()
 	namespaceMeta, exists := master.namespaces[entry.Namespace]
 	master.namespacesLock.RUnlock()
@@ -223,7 +223,7 @@ func (entry *AddFileOperationLogEntry) Execute(master *Master) error {
 	return namespaceMeta.addFile(entry.Pathname)
 }
 
-func (entry *AddFileOperationLogEntry) Replay(master *Master) error {
+func (entry *CreateFileOperationLogEntry) Replay(master *Master) error {
 	return entry.Execute(master)
 }
 
