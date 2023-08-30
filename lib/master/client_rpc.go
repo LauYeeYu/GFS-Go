@@ -21,15 +21,24 @@ func (master *Master) MakeNamespaceRPC(
 	reply *gfs.MakeNamespaceReply,
 ) error {
 	master.namespacesLock.Lock()
-	defer master.namespacesLock.Unlock()
 	_, exists := master.namespaces[args.Namespace]
+	master.namespacesLock.Unlock()
 	if exists {
 		reply.Success = false
 		reply.Message = "namespace already exists"
 		return nil
 	}
-	master.namespaces[args.Namespace] = MakeNamespace()
-	reply.Success = true
+	err := master.appendLog(
+		MakeOperationLogEntryHeader(CreateNamespaceOperation),
+		&CreateNamespaceOperationLogEntry{args.Namespace},
+	)
+	if err != nil {
+		reply.Success = false
+		reply.Message = err.Error()
+	} else {
+		reply.Success = true
+		reply.Message = ""
+	}
 	return nil
 }
 
